@@ -4,6 +4,8 @@ import { POINT_VALUES } from '../data/gameData'
 import { buildYouTubeEmbedUrl } from '../utils/youtube'
 
 function HostView({
+  roomCode,
+  isRemoteSyncEnabled,
   categories,
   hostSelection,
   activePlayers,
@@ -20,6 +22,7 @@ function HostView({
   onUpdateScore,
   onResetBuzzer,
   onResetAllBuzzers,
+  onRegenerateRoomCode,
   onRevealBoard,
 }) {
   const [playNonce, setPlayNonce] = useState(0)
@@ -51,6 +54,15 @@ function HostView({
         Click a clue to control what appears on the player screen, then award points
         below.
       </div>
+
+      {isRemoteSyncEnabled && (
+        <div className="info-panel" style={{ marginTop: '8px' }}>
+          <strong>Room:</strong> {roomCode}{' '}
+          <button className="btn btn-outline" onClick={onRegenerateRoomCode}>
+            New Room Code
+          </button>
+        </div>
+      )}
 
       {!boardReady && (
         <div style={{ marginBottom: '20px' }}>

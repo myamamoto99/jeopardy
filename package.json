@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "eslint-config-next": "^16.2.9",
+    "firebase": "^12.14.0",
     "next": "^16.2.9",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.6",

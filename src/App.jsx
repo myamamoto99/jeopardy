@@ -14,6 +14,8 @@ function App({ initialView }) {
   const {
     state: {
       view,
+      roomCode,
+      isRemoteSyncEnabled,
       categories,
       scores,
       players,
@@ -44,6 +46,7 @@ function App({ initialView }) {
       sendSelectionToPlayer,
       resetCategoriesToDefault,
       resetScores,
+      regenerateRoomCode,
       connectPlayer,
       buzzIn,
       resetBuzzer,
@@ -85,6 +88,8 @@ function App({ initialView }) {
 
       {view === 'host' && (
         <HostView
+          roomCode={roomCode}
+          isRemoteSyncEnabled={isRemoteSyncEnabled}
           categories={categories}
           hostSelection={hostSelection}
           activePlayers={activePlayers}
@@ -106,12 +111,14 @@ function App({ initialView }) {
           onUpdateScore={updateScore}
           onResetBuzzer={resetBuzzer}
           onResetAllBuzzers={resetAllBuzzers}
+          onRegenerateRoomCode={regenerateRoomCode}
           onRevealBoard={() => setBoardReady(true)}
         />
       )}
 
       {view === 'player' && (
         <PlayerView
+          roomCode={roomCode}
           categories={categories}
           activeClue={activeClue}
           hostClueState={hostClueState}

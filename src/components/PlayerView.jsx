@@ -4,6 +4,7 @@ import ScoreRow from './ScoreRow'
 import { POINT_VALUES } from '../data/gameData'
 
 function PlayerView({
+  roomCode,
   categories,
   activeClue,
   hostClueState,
@@ -14,7 +15,7 @@ function PlayerView({
   onHost,
 }) {
   const buzzerUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}${window.location.pathname.replace(/\/player$/, '')}/buzzer`
+    ? `${window.location.origin}${window.location.pathname.replace(/\/player$/, '')}/buzzer?room=${encodeURIComponent(roomCode || '')}`
     : ''
 
   return (
