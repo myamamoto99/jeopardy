@@ -207,7 +207,7 @@
 }
 
 .clue-answer {
-  font-size: clamp(1.4rem, 3.5vw, 2.2rem);
+  font-size: clamp(2rem, 5vw, 3.5rem);
   max-width: 760px;
   line-height: 1.4;
 }
@@ -391,6 +391,140 @@
   color: #4a9a4a;
   padding: 8px 10px;
   text-align: center;
+}
+
+/* Player Selection Styles */
+.player-selection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.player-selection-btn {
+  min-height: 100px;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.team-name {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Buzzer Styles */
+.buzzer-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.buzzer-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  padding: 20px;
+}
+
+.team-display {
+  font-size: 32px;
+  font-weight: 700;
+  color: #f0c040;
+  letter-spacing: 2px;
+}
+
+.buzzer-btn {
+  width: 100%;
+  max-width: 300px;
+  min-height: 120px;
+  font-size: 28px;
+  font-weight: 700;
+  background: #2a7fff;
+  border-color: #2a7fff;
+  color: #fff;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.buzzer-btn:hover:not(:disabled) {
+  background: #1e5fbf;
+  border-color: #1e5fbf;
+  transform: scale(1.05);
+}
+
+.buzzer-btn:disabled {
+  background: #666;
+  border-color: #666;
+  cursor: not-allowed;
+}
+
+.buzzer-disabled {
+  background: #666;
+  border-color: #666;
+  cursor: not-allowed;
+}
+
+.buzzed-in-message {
+  text-align: center;
+  gap: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.buzzed-in-message .small-meta {
+  font-size: 16px;
+  color: #4a9a4a;
+}
+
+/* Buzzer Status in Host View */
+.buzzer-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.buzzer-status-pill {
+  background: #0f1f3d;
+  border: 1px solid #1e3a6e;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 120px;
+  text-align: center;
+}
+
+.buzzer-status-pill.buzzed-in {
+  background: #1a3a1a;
+  border-color: #4a9a4a;
+}
+
+.buzzer-team {
+  font-size: 14px;
+  color: #7a90b8;
+  margin-bottom: 8px;
+}
+
+.buzzer-status-pill.buzzed-in .buzzer-team {
+  color: #4a9a4a;
+}
+
+.buzzer-rank {
+  font-size: 24px;
+  font-weight: 700;
+  color: #f0c040;
+  margin: 8px 0;
+}
+
+.mini-reset-btn {
+  font-size: 10px;
+  padding: 4px 8px;
+  width: 100%;
 }
 
 @media (max-width: 780px) {

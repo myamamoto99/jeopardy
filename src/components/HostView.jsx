@@ -8,6 +8,8 @@ function HostView({
   hostSelection,
   activePlayers,
   scores,
+  players,
+  buzzers,
   onHome,
   onSelectClue,
   onSendToPlayer,
@@ -15,6 +17,8 @@ function HostView({
   onMarkUsed,
   onResetUnused,
   onUpdateScore,
+  onResetBuzzer,
+  onResetAllBuzzers,
 }) {
   const [playNonce, setPlayNonce] = useState(0)
 
@@ -124,21 +128,65 @@ function HostView({
 
       <h3 className="section-label">Scores</h3>
       <div className="score-row">
-        {activePlayers.map((name) => (
-          <div key={`host-${name}`} className="score-pill">
-            <div className="score-name">{name}</div>
-            <div className="score-value">${(scores[name] || 0).toLocaleString()}</div>
-            <div className="mini-actions">
-              {POINT_VALUES.map((pts) => (
-                <button key={`${name}-${pts}`} onClick={() => onUpdateScore(name, pts)}>
-                  +${pts}
+        {activePlayers.map((name) => {
+          const clueValue = hostSelection ? POINT_VALUES[hostSelection.vi] : 0
+          return (
+            <div key={`host-${name}`} className="score-pill">
+              <div className="score-name">{name}</div>
+              <div className="score-value">${(scores[name] || 0).toLocaleString()}</div>
+              <div className="mini-actions">
+                <button
+                  onClick={() => onUpdateScore(name, clueValue)}
+                  disabled={!hostSelection}
+                >
+                  +${clueValue}
                 </button>
-              ))}
-              <button onClick={() => onUpdateScore(name, -200)}>-200</button>
+                <button
+                  onClick={() => onUpdateScore(name, -clueValue)}
+                  disabled={!hostSelection}
+                >
+                  -${clueValue}
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
+
+      <h3 className="section-label">Buzzers</h3>
+      <div className="buzzer-status-row">
+        {Object.entries(buzzers).map(([playerId, buzzer]) => {
+          const teamName = players[buzzer.teamIndex] || `Team ${buzzer.teamIndex + 1}`
+          const buzzedInPlayers = Object.entries(buzzers)
+            .filter(([, b]) => b.buzzedIn)
+            .sort(([, a], [, b]) => (a.buzzTime || 0) - (b.buzzTime || 0))
+          const buzzerRank = buzzedInPlayers.findIndex(([id]) => id === playerId) + 1
+
+          return (
+            <div key={`buzzer-${playerId}`} className={`buzzer-status-pill ${buzzer.buzzedIn ? 'buzzed-in' : ''}`}>
+              <div className="buzzer-team">{teamName}</div>
+              {buzzer.buzzedIn && (
+                <div className="buzzer-rank">#{buzzerRank}</div>
+              )}
+              <button
+                className="btn btn-outline mini-reset-btn"
+                onClick={() => onResetBuzzer(playerId)}
+              >
+                Reset
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      {Object.keys(buzzers).length > 0 && (
+        <button
+          className="btn btn-gold"
+          onClick={onResetAllBuzzers}
+          style={{ marginTop: '10px', width: '100%' }}
+        >
+          Reset All Buzzers
+        </button>
+      )}
     </div>
   )
 }

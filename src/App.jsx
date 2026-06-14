@@ -1,10 +1,13 @@
 import './App.css'
+import { useEffect } from 'react'
 import BoardView from './components/BoardView'
 import EditorView from './components/EditorView'
 import HomeView from './components/HomeView'
 import HostView from './components/HostView'
 import PlayersView from './components/PlayersView'
 import PlayerView from './components/PlayerView'
+import PlayerSelectView from './components/PlayerSelectView'
+import BuzzerView from './components/BuzzerView'
 import useJeopardyGame from './hooks/useJeopardyGame'
 
 function App() {
@@ -19,6 +22,8 @@ function App() {
       editingCat,
       hostSelection,
       homeBoardReveal,
+      connectedPlayerId,
+      buzzers,
     },
     derived: { activePlayers, editorSaved, playersSaved },
     actions: {
@@ -37,8 +42,21 @@ function App() {
       sendSelectionToPlayer,
       resetCategoriesToDefault,
       resetScores,
+      connectPlayer,
+      buzzIn,
+      resetBuzzer,
+      resetAllBuzzers,
+      disconnectPlayer,
     },
   } = useJeopardyGame()
+
+  // Auto-navigate to buzzer mode if accessed via buzzer URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('join') === '1' || window.location.pathname.includes('/buzzer')) {
+      setView('player-select')
+    }
+  }, [])
 
   return (
     <div className="shell">
@@ -65,6 +83,8 @@ function App() {
           hostSelection={hostSelection}
           activePlayers={activePlayers}
           scores={scores}
+          players={players}
+          buzzers={buzzers}
           onHome={() => setView('home')}
           onSelectClue={openHostSelection}
           onSendToPlayer={() => sendSelectionToPlayer(false)}
@@ -72,6 +92,8 @@ function App() {
           onMarkUsed={() => markClueUsed(hostSelection.ci, hostSelection.vi, true)}
           onResetUnused={() => markClueUsed(hostSelection.ci, hostSelection.vi, false)}
           onUpdateScore={updateScore}
+          onResetBuzzer={resetBuzzer}
+          onResetAllBuzzers={resetAllBuzzers}
         />
       )}
 
@@ -116,6 +138,24 @@ function App() {
             }
           }}
           playersSaved={playersSaved}
+        />
+      )}
+
+      {view === 'player-select' && (
+        <PlayerSelectView
+          players={players}
+          onSelectPlayer={connectPlayer}
+          onHome={() => setView('home')}
+        />
+      )}
+
+      {view === 'buzzer' && (
+        <BuzzerView
+          players={players}
+          connectedPlayerId={connectedPlayerId}
+          buzzers={buzzers}
+          onBuzzIn={buzzIn}
+          onDisconnect={disconnectPlayer}
         />
       )}
     </div>

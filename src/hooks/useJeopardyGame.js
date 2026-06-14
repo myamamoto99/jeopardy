@@ -3,6 +3,7 @@ import { cloneDefaultCategories } from '../data/gameData'
 import { sanitizePlainText } from '../utils/inputSecurity'
 import useTimedFlag from './useTimedFlag'
 import { sanitizeYouTubeUrl } from '../utils/youtube'
+import { useCrossTabSync } from './useCrossTabSync'
 
 const CATEGORIES_STORAGE_KEY = 'jeopardy.categories.v1'
 
@@ -91,6 +92,10 @@ function useJeopardyGame() {
   const [editingCat, setEditingCat] = useState(0)
   const [hostSelection, setHostSelection] = useState(null)
   const [homeBoardReveal, setHomeBoardReveal] = useState(false)
+  
+  // Buzzer state
+  const [connectedPlayerId, setConnectedPlayerId] = useState(null)
+  const [buzzers, setBuzzers] = useState({})
 
   const editorSavedFlag = useTimedFlag(2000)
   const playersSavedFlag = useTimedFlag(2000)
@@ -99,6 +104,35 @@ function useJeopardyGame() {
     () => players.map((name, idx) => name || `Team ${idx + 1}`),
     [players],
   )
+
+  // Cross-tab synchronization
+  useCrossTabSync('scores', scores, (newScores) => {
+    setScores(newScores)
+  })
+
+  useCrossTabSync('players', players, (newPlayers) => {
+    setPlayers(newPlayers)
+  })
+
+  useCrossTabSync('activeClue', activeClue, (newActiveClue) => {
+    setActiveClue(newActiveClue)
+  })
+
+  useCrossTabSync('hostClueState', hostClueState, (newHostClueState) => {
+    setHostClueState(newHostClueState)
+  })
+
+  useCrossTabSync('hostSelection', hostSelection, (newHostSelection) => {
+    setHostSelection(newHostSelection)
+  })
+
+  useCrossTabSync('homeBoardReveal', homeBoardReveal, (newHomeBoardReveal) => {
+    setHomeBoardReveal(newHomeBoardReveal)
+  })
+
+  useCrossTabSync('buzzers', buzzers, (newBuzzers) => {
+    setBuzzers(newBuzzers)
+  })
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -187,7 +221,6 @@ function useJeopardyGame() {
     if (!hostSelection) return
     setActiveClue(hostSelection)
     setHostClueState(revealAnswer ? 'revealed' : 'hidden')
-    setView('player')
   }
 
   function resetCategoriesToDefault() {
@@ -197,6 +230,67 @@ function useJeopardyGame() {
 
   function resetScores() {
     setScores({})
+  }
+
+  function connectPlayer(teamIndex) {
+    const playerId = `player_${Date.now()}_${Math.random()}`
+    setConnectedPlayerId(playerId)
+    setBuzzers((prev) => ({
+      ...prev,
+      [playerId]: {
+        teamIndex,
+        buzzedIn: false,
+        buzzTime: null,
+      },
+    }))
+    setView('buzzer')
+  }
+
+  function buzzIn() {
+    if (!connectedPlayerId || buzzers[connectedPlayerId]?.buzzedIn) return
+    setBuzzers((prev) => ({
+      ...prev,
+      [connectedPlayerId]: {
+        ...prev[connectedPlayerId],
+        buzzedIn: true,
+        buzzTime: Date.now(),
+      },
+    }))
+  }
+
+  function resetBuzzer(playerId) {
+    setBuzzers((prev) => ({
+      ...prev,
+      [playerId]: {
+        ...prev[playerId],
+        buzzedIn: false,
+        buzzTime: null,
+      },
+    }))
+  }
+
+  function resetAllBuzzers() {
+    setBuzzers((prev) => {
+      const updated = {}
+      Object.keys(prev).forEach((id) => {
+        updated[id] = {
+          ...prev[id],
+          buzzedIn: false,
+          buzzTime: null,
+        }
+      })
+      return updated
+    })
+  }
+
+  function disconnectPlayer() {
+    setBuzzers((prev) => {
+      const updated = { ...prev }
+      delete updated[connectedPlayerId]
+      return updated
+    })
+    setConnectedPlayerId(null)
+    setView('home')
   }
 
   return {
@@ -210,6 +304,8 @@ function useJeopardyGame() {
       editingCat,
       hostSelection,
       homeBoardReveal,
+      connectedPlayerId,
+      buzzers,
     },
     derived: {
       activePlayers,
@@ -232,6 +328,11 @@ function useJeopardyGame() {
       sendSelectionToPlayer,
       resetCategoriesToDefault,
       resetScores,
+      connectPlayer,
+      buzzIn,
+      resetBuzzer,
+      resetAllBuzzers,
+      disconnectPlayer,
     },
   }
 }

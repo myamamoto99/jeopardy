@@ -17,6 +17,9 @@ function HomeView({ onNavigate }) {
         <button className="btn btn-outline" onClick={() => onNavigate('player')}>
           Player Screen
         </button>
+        <button className="btn btn-gold" onClick={() => onNavigate('player-select')}>
+          Join Game (Buzzer)
+        </button>
         <button className="btn btn-outline" onClick={() => onNavigate('editor')}>
           Edit Questions
         </button>
