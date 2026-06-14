@@ -8,17 +8,11 @@ function HomeView({ onNavigate }) {
         views in separate tabs or windows.
       </p>
       <div className="home-actions">
-        <button className="btn btn-gold" onClick={() => onNavigate('board')}>
-          Game Board
-        </button>
         <button className="btn btn-blue" onClick={() => onNavigate('host')}>
           Host View
         </button>
         <button className="btn btn-outline" onClick={() => onNavigate('player')}>
           Player Screen
-        </button>
-        <button className="btn btn-gold" onClick={() => onNavigate('player-select')}>
-          Join Game (Buzzer)
         </button>
         <button className="btn btn-outline" onClick={() => onNavigate('editor')}>
           Edit Questions

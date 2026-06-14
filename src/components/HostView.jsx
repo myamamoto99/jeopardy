@@ -10,6 +10,7 @@ function HostView({
   scores,
   players,
   buzzers,
+  boardReady,
   onHome,
   onSelectClue,
   onSendToPlayer,
@@ -19,6 +20,7 @@ function HostView({
   onUpdateScore,
   onResetBuzzer,
   onResetAllBuzzers,
+  onRevealBoard,
 }) {
   const [playNonce, setPlayNonce] = useState(0)
 
@@ -50,12 +52,22 @@ function HostView({
         below.
       </div>
 
+      {!boardReady && (
+        <div style={{ marginBottom: '20px' }}>
+          <button className="btn btn-gold" onClick={onRevealBoard}>
+            Reveal Board (Everyone Ready?)
+          </button>
+        </div>
+      )}
+
       <BoardGrid
         categories={categories}
         compact
         onClueClick={onSelectClue}
-        getCellProps={({ clue, pts, compact }) => ({
-          className: `clue-cell ${compact ? 'compact' : ''} ${clue.used ? 'used-host' : ''}`,
+        getCellProps={({ clue, ci, vi, pts, compact }) => ({
+          className: `clue-cell ${compact ? 'compact' : ''} ${clue.used ? 'used-host' : ''} ${
+            hostSelection?.ci === ci && hostSelection?.vi === vi ? 'selected-host' : ''
+          }`,
           disabled: false,
           label: clue.used ? 'used' : `$${pts}`,
         })}

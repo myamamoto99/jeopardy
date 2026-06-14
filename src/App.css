@@ -47,8 +47,9 @@
   gap: 10px;
 }
 
-.home-actions .btn:first-child {
-  grid-column: span 2;
+.home-actions .btn {
+  width: 100%;
+  min-height: 48px;
 }
 
 .btn {
@@ -160,6 +161,17 @@
   background: #0c1a0c;
   border-color: #1a3a1a;
   color: #4a9a4a;
+}
+
+.clue-cell.selected-host {
+  border-color: #f0c040;
+  box-shadow: inset 0 0 0 2px #f0c040;
+  background: #18325f;
+}
+
+.clue-cell.used-host.selected-host {
+  border-color: #9fd89f;
+  box-shadow: inset 0 0 0 2px #9fd89f;
 }
 
 .cat-cell.compact {

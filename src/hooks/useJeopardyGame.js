@@ -14,6 +14,7 @@ function normalizeCategoriesForStorage(categories) {
       answer: sanitizePlainText(clue.answer, 240),
       question: sanitizePlainText(clue.question, 240),
       mediaUrl: sanitizeYouTubeUrl(clue.mediaUrl || ''),
+      used: clue.used,
     })),
   }))
 }
@@ -57,7 +58,7 @@ function buildCategoriesFromStoredValue(storedValue) {
             typeof savedClue.mediaUrl === 'string'
               ? sanitizeYouTubeUrl(savedClue.mediaUrl)
               : '',
-          used: false,
+          used: savedClue.used === true ? true : false,
         }
       }),
     }
@@ -92,6 +93,7 @@ function useJeopardyGame() {
   const [editingCat, setEditingCat] = useState(0)
   const [hostSelection, setHostSelection] = useState(null)
   const [homeBoardReveal, setHomeBoardReveal] = useState(false)
+  const [boardReady, setBoardReady] = useState(false)
   
   // Buzzer state
   const [connectedPlayerId, setConnectedPlayerId] = useState(null)
@@ -106,6 +108,10 @@ function useJeopardyGame() {
   )
 
   // Cross-tab synchronization
+  useCrossTabSync('categories', categories, (newCategories) => {
+    setCategories(newCategories)
+  })
+
   useCrossTabSync('scores', scores, (newScores) => {
     setScores(newScores)
   })
@@ -128,6 +134,10 @@ function useJeopardyGame() {
 
   useCrossTabSync('homeBoardReveal', homeBoardReveal, (newHomeBoardReveal) => {
     setHomeBoardReveal(newHomeBoardReveal)
+  })
+
+  useCrossTabSync('boardReady', boardReady, (newBoardReady) => {
+    setBoardReady(newBoardReady)
   })
 
   useCrossTabSync('buzzers', buzzers, (newBuzzers) => {
@@ -304,6 +314,7 @@ function useJeopardyGame() {
       editingCat,
       hostSelection,
       homeBoardReveal,
+      boardReady,
       connectedPlayerId,
       buzzers,
     },
@@ -316,6 +327,7 @@ function useJeopardyGame() {
       setView,
       setEditingCat,
       setHomeBoardReveal,
+      setBoardReady,
       showClue,
       closeBoardClue,
       markClueUsed,

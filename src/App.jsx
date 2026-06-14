@@ -10,7 +10,7 @@ import PlayerSelectView from './components/PlayerSelectView'
 import BuzzerView from './components/BuzzerView'
 import useJeopardyGame from './hooks/useJeopardyGame'
 
-function App() {
+function App({ initialView }) {
   const {
     state: {
       view,
@@ -22,6 +22,7 @@ function App() {
       editingCat,
       hostSelection,
       homeBoardReveal,
+      boardReady,
       connectedPlayerId,
       buzzers,
     },
@@ -30,6 +31,7 @@ function App() {
       setView,
       setEditingCat,
       setHomeBoardReveal,
+      setBoardReady,
       showClue,
       closeBoardClue,
       markClueUsed,
@@ -52,11 +54,15 @@ function App() {
 
   // Auto-navigate to buzzer mode if accessed via buzzer URL
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('join') === '1' || window.location.pathname.includes('/buzzer')) {
-      setView('player-select')
+    if (initialView) {
+      setView(initialView)
+    } else {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('join') === '1') {
+        setView('player-select')
+      }
     }
-  }, [])
+  }, [initialView, setView])
 
   return (
     <div className="shell">
@@ -85,15 +91,22 @@ function App() {
           scores={scores}
           players={players}
           buzzers={buzzers}
+          boardReady={boardReady}
           onHome={() => setView('home')}
           onSelectClue={openHostSelection}
           onSendToPlayer={() => sendSelectionToPlayer(false)}
           onRevealOnPlayer={() => sendSelectionToPlayer(true)}
-          onMarkUsed={() => markClueUsed(hostSelection.ci, hostSelection.vi, true)}
+          onMarkUsed={() => {
+            if (hostSelection) {
+              markClueUsed(hostSelection.ci, hostSelection.vi, true)
+              closeBoardClue()
+            }
+          }}
           onResetUnused={() => markClueUsed(hostSelection.ci, hostSelection.vi, false)}
           onUpdateScore={updateScore}
           onResetBuzzer={resetBuzzer}
           onResetAllBuzzers={resetAllBuzzers}
+          onRevealBoard={() => setBoardReady(true)}
         />
       )}
 
@@ -104,6 +117,7 @@ function App() {
           hostClueState={hostClueState}
           activePlayers={activePlayers}
           scores={scores}
+          boardReady={boardReady}
           onHome={() => setView('home')}
           onHost={() => setView('host')}
         />
