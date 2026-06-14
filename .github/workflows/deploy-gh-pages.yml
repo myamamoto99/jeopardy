@@ -15,6 +15,7 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: 1
       GITHUB_ACTIONS: true
+      NEXT_PUBLIC_FIREBASE_DB_URL: ${{ vars.NEXT_PUBLIC_FIREBASE_DB_URL }}
 
     steps:
       - name: Checkout
