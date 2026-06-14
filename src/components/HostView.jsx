@@ -24,6 +24,7 @@ function HostView({
   onResetBuzzer,
   onResetAllBuzzers,
   onRegenerateRoomCode,
+  onShowJoinLobby,
   onRevealBoard,
 }) {
   const [playNonce, setPlayNonce] = useState(0)
@@ -102,6 +103,14 @@ function HostView({
         <div style={{ marginBottom: '20px' }}>
           <button className="btn btn-gold" onClick={onRevealBoard}>
             Reveal Board (Everyone Ready?)
+          </button>
+        </div>
+      )}
+
+      {boardReady && (
+        <div style={{ marginBottom: '20px' }}>
+          <button className="btn btn-outline" onClick={onShowJoinLobby}>
+            Back to Join Lobby (Show QR)
           </button>
         </div>
       )}

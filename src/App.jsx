@@ -114,6 +114,10 @@ function App({ initialView }) {
           onResetBuzzer={resetBuzzer}
           onResetAllBuzzers={resetAllBuzzers}
           onRegenerateRoomCode={regenerateRoomCode}
+          onShowJoinLobby={() => {
+            closeBoardClue()
+            setBoardReady(false)
+          }}
           onRevealBoard={() => setBoardReady(true)}
         />
       )}
