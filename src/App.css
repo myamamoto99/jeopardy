@@ -239,6 +239,14 @@
   gap: 10px;
 }
 
+.board-select {
+  background: #0f1f3d;
+  border: 1px solid #1e3a6e;
+  color: #e8edf8;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
 .host-badge {
   background: #a32d2d;
   color: #fff;

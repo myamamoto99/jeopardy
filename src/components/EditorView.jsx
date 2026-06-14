@@ -4,17 +4,29 @@ import { isPotentiallyUnsafeText, sanitizePlainText } from '../utils/inputSecuri
 import { isSafeYouTubeUrl, sanitizeYouTubeUrl } from '../utils/youtube'
 
 function EditorView({
+  boardCatalog,
+  activeBoardId,
   categories,
   editingCat,
   setEditingCat,
+  onSelectBoard,
+  onAddBoard,
+  onRenameBoard,
   onHome,
   onSave,
   onReset,
   showSaved,
 }) {
   const cat = categories[editingCat]
+  const activeBoard =
+    boardCatalog.find((board) => board.id === activeBoardId) || boardCatalog[0]
+  const [draftBoardName, setDraftBoardName] = useState(activeBoard?.name || '')
   const [draftName, setDraftName] = useState(cat.name)
   const [draftClues, setDraftClues] = useState(cat.clues)
+
+  useEffect(() => {
+    setDraftBoardName(activeBoard?.name || '')
+  }, [activeBoardId, activeBoard?.name])
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -51,7 +63,39 @@ function EditorView({
           Home
         </button>
         <h2>Edit Questions</h2>
-        <div />
+        <div className="action-row">
+          <select
+            className="board-select"
+            value={activeBoardId}
+            onChange={(e) => onSelectBoard(e.target.value)}
+          >
+            {boardCatalog.map((board) => (
+              <option key={board.id} value={board.id}>
+                {board.name}
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-outline" onClick={onAddBoard}>
+            Add Board
+          </button>
+        </div>
+      </div>
+
+      <div className="editor-card">
+        <label>Board Name</label>
+        <input
+          className="board-select"
+          value={draftBoardName}
+          onChange={(e) => setDraftBoardName(e.target.value)}
+          onBlur={(e) => {
+            const safeName = sanitizePlainText(e.target.value, 60).trim()
+            const finalName = safeName || activeBoard?.name || 'Board'
+            setDraftBoardName(finalName)
+            if (activeBoard) {
+              onRenameBoard(activeBoard.id, finalName)
+            }
+          }}
+        />
       </div>
 
       <div className="tab-row">

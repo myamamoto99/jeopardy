@@ -5,7 +5,6 @@ import ScoreRow from './ScoreRow'
 import { POINT_VALUES } from '../data/gameData'
 
 function PlayerView({
-  roomCode,
   categories,
   activeClue,
   hostClueState,
@@ -18,14 +17,14 @@ function PlayerView({
   const [buzzerUrl, setBuzzerUrl] = useState('')
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !roomCode) {
+    if (typeof window === 'undefined') {
       return
     }
 
     setBuzzerUrl(
-      `${window.location.origin}${window.location.pathname.replace(/\/player$/, '')}/buzzer?room=${encodeURIComponent(roomCode)}`,
+      `${window.location.origin}${window.location.pathname.replace(/\/player$/, '')}/buzzer?join=1`,
     )
-  }, [roomCode])
+  }, [])
 
   return (
     <div className="page board-page">

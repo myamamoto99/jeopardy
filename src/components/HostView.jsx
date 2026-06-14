@@ -4,7 +4,6 @@ import { POINT_VALUES } from '../data/gameData'
 import { buildYouTubeEmbedUrl } from '../utils/youtube'
 
 function HostView({
-  roomCode,
   isRemoteSyncEnabled,
   firebaseStatus,
   categories,
@@ -23,7 +22,7 @@ function HostView({
   onUpdateScore,
   onResetBuzzer,
   onResetAllBuzzers,
-  onRegenerateRoomCode,
+  onClearRealtimeData,
   onShowJoinLobby,
   onRevealBoard,
 }) {
@@ -60,9 +59,17 @@ function HostView({
       {isRemoteSyncEnabled && (
         <>
           <div className="info-panel" style={{ marginTop: '8px' }}>
-            <strong>Room:</strong> {roomCode}{' '}
-            <button className="btn btn-outline" onClick={onRegenerateRoomCode}>
-              New Room Code
+            <strong>Realtime:</strong> Global shared game state
+            <button
+              className="btn btn-outline"
+              style={{ marginLeft: '8px' }}
+              onClick={() => {
+                if (window.confirm('Clear all stored realtime game data (including legacy rooms)?')) {
+                  onClearRealtimeData()
+                }
+              }}
+            >
+              Clear Stored Game Data
             </button>
           </div>
 

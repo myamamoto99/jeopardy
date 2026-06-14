@@ -6,48 +6,57 @@ import { sanitizeYouTubeUrl } from '../utils/youtube'
 import { useCrossTabSync } from './useCrossTabSync'
 
 const CATEGORIES_STORAGE_KEY = 'jeopardy.categories.v1'
-const ROOM_CODE_STORAGE_KEY = 'jeopardy.roomCode.v1'
 const FIREBASE_DB_URL = (process.env.NEXT_PUBLIC_FIREBASE_DB_URL || '').replace(/\/$/, '')
 const DEFAULT_CATEGORIES = cloneDefaultCategories()
 const CATEGORY_COUNT = DEFAULT_CATEGORIES.length
 const CLUE_COUNT = DEFAULT_CATEGORIES[0]?.clues?.length || 5
 
-function sanitizeRoomCode(value) {
-  if (typeof value !== 'string') return ''
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+function formatFirebaseHttpError(operation, status) {
+  if (status === 401 || status === 403) {
+    return `${operation} failed (${status}): Permission denied. Check Firebase RTDB Rules for read/write access.`
+  }
+  return `${operation} failed (${status})`
 }
 
-function createRoomCode(length = 6) {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let result = ''
-  for (let i = 0; i < length; i += 1) {
-    result += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return result
+function buildEmptyUsedMap() {
+  return DEFAULT_CATEGORIES.map((cat) => cat.clues.map(() => false))
 }
 
-function loadInitialRoomCode() {
-  if (typeof window === 'undefined') {
-    return createRoomCode()
+function normalizeUsedMap(raw) {
+  const empty = buildEmptyUsedMap()
+  if (!Array.isArray(raw)) {
+    return empty
   }
 
-  try {
-    const roomFromUrl = sanitizeRoomCode(
-      new URLSearchParams(window.location.search).get('room') || '',
-    )
-    if (roomFromUrl) {
-      return roomFromUrl
-    }
+  return empty.map((row, ci) =>
+    row.map((_, vi) => raw?.[ci]?.[vi] === true),
+  )
+}
 
-    const saved = sanitizeRoomCode(window.localStorage.getItem(ROOM_CODE_STORAGE_KEY) || '')
-    if (saved) {
-      return saved
-    }
-  } catch {
-    // Fall through to generated room code.
-  }
+function extractUsedMapFromCategories(categories) {
+  return buildEmptyUsedMap().map((row, ci) =>
+    row.map((_, vi) => categories?.[ci]?.clues?.[vi]?.used === true),
+  )
+}
 
-  return createRoomCode()
+function applyUsedMapToCategories(baseCategories, usedMap) {
+  const normalizedBase = buildCategoriesFromStoredValue(baseCategories)
+  const normalizedUsed = normalizeUsedMap(usedMap)
+
+  return normalizedBase.map((cat, ci) => ({
+    ...cat,
+    clues: cat.clues.map((clue, vi) => ({
+      ...clue,
+      used: normalizedUsed[ci][vi],
+    })),
+  }))
+}
+
+function clearUsedFlags(categories) {
+  return buildCategoriesFromStoredValue(categories).map((cat) => ({
+    ...cat,
+    clues: cat.clues.map((clue) => ({ ...clue, used: false })),
+  }))
 }
 
 function normalizeBuzzers(raw) {
@@ -149,28 +158,30 @@ function normalizeScores(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return {}
   }
-
   return Object.entries(raw).reduce((acc, [name, value]) => {
-    const safeName = sanitizePlainText(name, 60)
+    const safeName = sanitizePlainText(name, 60).trim()
     if (!safeName) {
       return acc
     }
 
-    const numericScore = Number(value)
-    acc[safeName] = Number.isFinite(numericScore) ? numericScore : 0
+    const numeric = Number(value)
+    acc[safeName] = Number.isFinite(numeric) ? numeric : 0
     return acc
   }, {})
 }
 
 function normalizePlayers(raw) {
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return ['Team 1', 'Team 2', 'Team 3']
+  const fallback = ['Team 1', 'Team 2', 'Team 3']
+  if (!Array.isArray(raw)) {
+    return fallback
   }
 
-  return raw.map((name, idx) => {
-    const safeName = sanitizePlainText(typeof name === 'string' ? name : '', 60).trim()
-    return safeName || `Team ${idx + 1}`
-  })
+  const next = raw
+    .slice(0, 8)
+    .map((name, idx) => sanitizePlainText(typeof name === 'string' ? name : `Team ${idx + 1}`, 60).trim())
+    .map((name, idx) => name || `Team ${idx + 1}`)
+
+  return next.length > 0 ? next : fallback
 }
 
 function normalizeSelection(raw) {
@@ -197,7 +208,13 @@ function normalizeRemoteGameState(raw) {
   }
 
   return {
-    categories: buildCategoriesFromStoredValue(raw.categories),
+    activeBoardId:
+      sanitizePlainText(typeof raw.activeBoardId === 'string' ? raw.activeBoardId : '', 40) ||
+      null,
+    roomUsedMap: normalizeUsedMap(
+      raw.roomUsedMap ||
+        extractUsedMapFromCategories(buildCategoriesFromStoredValue(raw.categories)),
+    ),
     scores: normalizeScores(raw.scores),
     players: normalizePlayers(raw.players),
     activeClue: normalizeSelection(raw.activeClue),
@@ -208,14 +225,70 @@ function normalizeRemoteGameState(raw) {
   }
 }
 
+function normalizeBoardLibrary(raw) {
+  const fallbackCatalog = [{ id: 'board-1', name: 'Board 1' }]
+  const fallbackMap = { 'board-1': cloneDefaultCategories() }
+
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {
+      boardCatalog: fallbackCatalog,
+      boardCategoriesById: fallbackMap,
+    }
+  }
+
+  const rawCatalog = Array.isArray(raw.boardCatalog) ? raw.boardCatalog : []
+  const boardCatalog = rawCatalog
+    .map((item, idx) => {
+      const id = sanitizePlainText(typeof item?.id === 'string' ? item.id : '', 40)
+      const name = sanitizePlainText(typeof item?.name === 'string' ? item.name : '', 60)
+      if (!id || !name) {
+        return null
+      }
+
+      return {
+        id,
+        name: name || `Board ${idx + 1}`,
+      }
+    })
+    .filter(Boolean)
+
+  const normalizedCatalog = boardCatalog.length > 0 ? boardCatalog : fallbackCatalog
+
+  const rawBoardMap = raw.boardCategoriesById && typeof raw.boardCategoriesById === 'object'
+    ? raw.boardCategoriesById
+    : {}
+
+  const boardCategoriesById = normalizedCatalog.reduce((acc, board) => {
+    acc[board.id] = buildCategoriesFromStoredValue(rawBoardMap[board.id])
+    return acc
+  }, {})
+
+  if (!boardCategoriesById[normalizedCatalog[0].id]) {
+    boardCategoriesById[normalizedCatalog[0].id] = cloneDefaultCategories()
+  }
+
+  return {
+    boardCatalog: normalizedCatalog,
+    boardCategoriesById,
+  }
+}
+
 function useJeopardyGame() {
   const isRemoteSyncEnabled = Boolean(FIREBASE_DB_URL)
   const applyingRemoteGameRef = useRef(false)
   const lastSyncedGameStateRef = useRef('')
+  const applyingRemoteBoardsRef = useRef(false)
+  const lastSyncedBoardLibraryRef = useRef('')
+  const didHydrateLocalCategoriesRef = useRef(false)
 
   const [view, setView] = useState('home')
-  const [roomCode, setRoomCode] = useState('')
-  const [categories, setCategories] = useState(loadInitialCategories)
+  const [categories, setCategories] = useState(() => cloneDefaultCategories())
+  const [boardCatalog, setBoardCatalog] = useState([{ id: 'board-1', name: 'Board 1' }])
+  const [boardCategoriesById, setBoardCategoriesById] = useState(() => ({
+    'board-1': cloneDefaultCategories(),
+  }))
+  const [activeBoardId, setActiveBoardId] = useState('board-1')
+  const [roomUsedMap, setRoomUsedMap] = useState(buildEmptyUsedMap)
   const [scores, setScores] = useState({})
   const [players, setPlayers] = useState(['Team 1', 'Team 2', 'Team 3'])
   const [activeClue, setActiveClue] = useState(null)
@@ -246,7 +319,8 @@ function useJeopardyGame() {
 
   const remoteGameState = useMemo(
     () => ({
-      categories: normalizeCategoriesForStorage(categories),
+      activeBoardId,
+      roomUsedMap,
       scores,
       players,
       activeClue,
@@ -256,7 +330,8 @@ function useJeopardyGame() {
       boardReady,
     }),
     [
-      categories,
+      activeBoardId,
+      roomUsedMap,
       scores,
       players,
       activeClue,
@@ -267,57 +342,88 @@ function useJeopardyGame() {
     ],
   )
 
-  useCrossTabSync('categories', categories, (newCategories) => {
+  const remoteBoardLibrary = useMemo(
+    () => ({
+      boardCatalog,
+      boardCategoriesById: {
+        ...boardCategoriesById,
+        [activeBoardId]: normalizeCategoriesForStorage(clearUsedFlags(categories)),
+      },
+    }),
+    [boardCatalog, boardCategoriesById, activeBoardId, categories],
+  )
+
+  useCrossTabSync('categories', isRemoteSyncEnabled ? undefined : categories, (newCategories) => {
+    if (isRemoteSyncEnabled) return
     setCategories(newCategories)
   })
 
-  useCrossTabSync('scores', scores, (newScores) => {
+  useCrossTabSync('scores', isRemoteSyncEnabled ? undefined : scores, (newScores) => {
+    if (isRemoteSyncEnabled) return
     setScores(newScores)
   })
 
-  useCrossTabSync('players', players, (newPlayers) => {
+  useCrossTabSync('players', isRemoteSyncEnabled ? undefined : players, (newPlayers) => {
+    if (isRemoteSyncEnabled) return
     setPlayers(newPlayers)
   })
 
-  useCrossTabSync('activeClue', activeClue, (newActiveClue) => {
+  useCrossTabSync('activeClue', isRemoteSyncEnabled ? undefined : activeClue, (newActiveClue) => {
+    if (isRemoteSyncEnabled) return
     setActiveClue(newActiveClue)
   })
 
-  useCrossTabSync('hostClueState', hostClueState, (newHostClueState) => {
-    setHostClueState(newHostClueState)
-  })
+  useCrossTabSync(
+    'hostClueState',
+    isRemoteSyncEnabled ? undefined : hostClueState,
+    (newHostClueState) => {
+      if (isRemoteSyncEnabled) return
+      setHostClueState(newHostClueState)
+    },
+  )
 
-  useCrossTabSync('hostSelection', hostSelection, (newHostSelection) => {
-    setHostSelection(newHostSelection)
-  })
+  useCrossTabSync(
+    'hostSelection',
+    isRemoteSyncEnabled ? undefined : hostSelection,
+    (newHostSelection) => {
+      if (isRemoteSyncEnabled) return
+      setHostSelection(newHostSelection)
+    },
+  )
 
-  useCrossTabSync('homeBoardReveal', homeBoardReveal, (newHomeBoardReveal) => {
-    setHomeBoardReveal(newHomeBoardReveal)
-  })
+  useCrossTabSync(
+    'homeBoardReveal',
+    isRemoteSyncEnabled ? undefined : homeBoardReveal,
+    (newHomeBoardReveal) => {
+      if (isRemoteSyncEnabled) return
+      setHomeBoardReveal(newHomeBoardReveal)
+    },
+  )
 
-  useCrossTabSync('boardReady', boardReady, (newBoardReady) => {
+  useCrossTabSync('boardReady', isRemoteSyncEnabled ? undefined : boardReady, (newBoardReady) => {
+    if (isRemoteSyncEnabled) return
     setBoardReady(newBoardReady)
   })
 
-  useCrossTabSync('buzzers', buzzers, (newBuzzers) => {
+  useCrossTabSync('buzzers', isRemoteSyncEnabled ? undefined : buzzers, (newBuzzers) => {
+    if (isRemoteSyncEnabled) return
     setBuzzers(newBuzzers)
   })
 
   useEffect(() => {
-    if (roomCode || typeof window === 'undefined') {
+    if (typeof window === 'undefined' || isRemoteSyncEnabled || didHydrateLocalCategoriesRef.current) {
       return
     }
 
-    setRoomCode(loadInitialRoomCode())
-  }, [roomCode])
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !roomCode) {
-      return
-    }
-
-    window.localStorage.setItem(ROOM_CODE_STORAGE_KEY, roomCode)
-  }, [roomCode])
+    const localCategories = loadInitialCategories()
+    didHydrateLocalCategoriesRef.current = true
+    setCategories(localCategories)
+    setRoomUsedMap(extractUsedMapFromCategories(localCategories))
+    setBoardCategoriesById((prev) => ({
+      ...prev,
+      [activeBoardId]: clearUsedFlags(localCategories),
+    }))
+  }, [isRemoteSyncEnabled, activeBoardId])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -329,7 +435,7 @@ function useJeopardyGame() {
   }, [categories])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !isRemoteSyncEnabled || !roomCode) {
+    if (typeof window === 'undefined' || !isRemoteSyncEnabled) {
       setFirebaseStatus((prev) => ({
         ...prev,
         gameStream: isRemoteSyncEnabled ? 'idle' : 'disabled',
@@ -337,7 +443,7 @@ function useJeopardyGame() {
       return
     }
 
-    const streamUrl = `${FIREBASE_DB_URL}/rooms/${encodeURIComponent(roomCode)}/gameState.json`
+    const streamUrl = `${FIREBASE_DB_URL}/gameState.json`
     const source = new EventSource(streamUrl)
     source.onopen = () => {
       setFirebaseStatus((prev) => ({
@@ -368,7 +474,8 @@ function useJeopardyGame() {
 
         applyingRemoteGameRef.current = true
         lastSyncedGameStateRef.current = JSON.stringify({
-          categories: normalizeCategoriesForStorage(normalized.categories),
+          activeBoardId: normalized.activeBoardId,
+          roomUsedMap: normalized.roomUsedMap,
           scores: normalized.scores,
           players: normalized.players,
           activeClue: normalized.activeClue,
@@ -378,7 +485,10 @@ function useJeopardyGame() {
           boardReady: normalized.boardReady,
         })
 
-        setCategories(normalized.categories)
+        if (normalized.activeBoardId) {
+          setActiveBoardId(normalized.activeBoardId)
+        }
+        setRoomUsedMap(normalized.roomUsedMap)
         setScores(normalized.scores)
         setPlayers(normalized.players)
         setActiveClue(normalized.activeClue)
@@ -405,10 +515,61 @@ function useJeopardyGame() {
         gameStream: isRemoteSyncEnabled ? 'idle' : 'disabled',
       }))
     }
-  }, [isRemoteSyncEnabled, roomCode])
+  }, [isRemoteSyncEnabled])
 
   useEffect(() => {
-    if (!isRemoteSyncEnabled || !roomCode) {
+    if (typeof window === 'undefined' || !isRemoteSyncEnabled) {
+      return
+    }
+
+    const streamUrl = `${FIREBASE_DB_URL}/boards/library.json`
+    const source = new EventSource(streamUrl)
+
+    const applyEventData = (eventData) => {
+      try {
+        const payload = JSON.parse(eventData)
+        if (payload?.path !== '/') {
+          return
+        }
+
+        const normalized = normalizeBoardLibrary(payload.data)
+        applyingRemoteBoardsRef.current = true
+        lastSyncedBoardLibraryRef.current = JSON.stringify(normalized)
+        setBoardCatalog(normalized.boardCatalog)
+        setBoardCategoriesById(normalized.boardCategoriesById)
+
+        if (!normalized.boardCategoriesById[activeBoardId]) {
+          const fallbackId = normalized.boardCatalog[0]?.id || 'board-1'
+          setActiveBoardId(fallbackId)
+        }
+      } catch {
+        // Ignore malformed board library stream payloads.
+      } finally {
+        applyingRemoteBoardsRef.current = false
+      }
+    }
+
+    const handlePut = (event) => applyEventData(event.data)
+
+    source.addEventListener('put', handlePut)
+
+    return () => {
+      source.removeEventListener('put', handlePut)
+      source.close()
+    }
+  }, [isRemoteSyncEnabled, activeBoardId])
+
+  useEffect(() => {
+    const base = boardCategoriesById[activeBoardId] || cloneDefaultCategories()
+    setCategories(applyUsedMapToCategories(base, roomUsedMap))
+  }, [boardCategoriesById, activeBoardId, roomUsedMap])
+
+  useEffect(() => {
+    if (!isRemoteSyncEnabled) {
+      return
+    }
+
+    if (typeof window !== 'undefined' && window.location.pathname.includes('/buzzer')) {
       return
     }
 
@@ -425,7 +586,7 @@ function useJeopardyGame() {
 
     lastSyncedGameStateRef.current = serialized
 
-    const writeUrl = `${FIREBASE_DB_URL}/rooms/${encodeURIComponent(roomCode)}/gameState.json`
+    const writeUrl = `${FIREBASE_DB_URL}/gameState.json`
     fetch(writeUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -433,7 +594,7 @@ function useJeopardyGame() {
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error(`gameState write failed (${response.status})`)
+          throw new Error(formatFirebaseHttpError('gameState write', response.status))
         }
 
         setFirebaseStatus((prev) => ({
@@ -450,10 +611,36 @@ function useJeopardyGame() {
           lastError: error?.message || 'gameState write failed',
         }))
       })
-  }, [isRemoteSyncEnabled, roomCode, remoteGameState])
+  }, [isRemoteSyncEnabled, remoteGameState])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !isRemoteSyncEnabled || !roomCode) {
+    if (!isRemoteSyncEnabled || view !== 'editor') {
+      return
+    }
+
+    const serialized = JSON.stringify(remoteBoardLibrary)
+
+    if (applyingRemoteBoardsRef.current) {
+      lastSyncedBoardLibraryRef.current = serialized
+      return
+    }
+
+    if (lastSyncedBoardLibraryRef.current === serialized) {
+      return
+    }
+
+    lastSyncedBoardLibraryRef.current = serialized
+
+    const writeUrl = `${FIREBASE_DB_URL}/boards/library.json`
+    fetch(writeUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: serialized,
+    }).catch(() => {})
+  }, [isRemoteSyncEnabled, view, remoteBoardLibrary])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isRemoteSyncEnabled) {
       setFirebaseStatus((prev) => ({
         ...prev,
         buzzerStream: isRemoteSyncEnabled ? 'idle' : 'disabled',
@@ -461,7 +648,7 @@ function useJeopardyGame() {
       return
     }
 
-    const streamUrl = `${FIREBASE_DB_URL}/rooms/${encodeURIComponent(roomCode)}/buzzers.json`
+    const streamUrl = `${FIREBASE_DB_URL}/players.json`
     const source = new EventSource(streamUrl)
     source.onopen = () => {
       setFirebaseStatus((prev) => ({
@@ -525,14 +712,14 @@ function useJeopardyGame() {
         buzzerStream: isRemoteSyncEnabled ? 'idle' : 'disabled',
       }))
     }
-  }, [isRemoteSyncEnabled, roomCode])
+  }, [isRemoteSyncEnabled])
 
   function writeRemoteBuzzers(nextBuzzers) {
-    if (!isRemoteSyncEnabled || !roomCode) {
+    if (!isRemoteSyncEnabled) {
       return
     }
 
-    const writeUrl = `${FIREBASE_DB_URL}/rooms/${encodeURIComponent(roomCode)}/buzzers.json`
+    const writeUrl = `${FIREBASE_DB_URL}/players.json`
     fetch(writeUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -540,7 +727,7 @@ function useJeopardyGame() {
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error(`buzzers write failed (${response.status})`)
+          throw new Error(formatFirebaseHttpError('players write', response.status))
         }
 
         setFirebaseStatus((prev) => ({
@@ -568,6 +755,12 @@ function useJeopardyGame() {
   }
 
   function markClueUsed(ci, vi, used) {
+    setRoomUsedMap((prev) => {
+      const next = normalizeUsedMap(prev)
+      next[ci][vi] = used
+      return next
+    })
+
     setCategories((prev) =>
       prev.map((cat, catIdx) => ({
         ...cat,
@@ -605,12 +798,65 @@ function useJeopardyGame() {
       })),
     }
 
-    setCategories((prev) => {
-      const next = [...prev]
-      next[editingCat] = sanitizedCat
-      return next
-    })
+    const baseBoard = boardCategoriesById[activeBoardId] || clearUsedFlags(categories)
+    const nextBoard = baseBoard.map((cat, idx) =>
+      idx === editingCat ? clearUsedFlags([sanitizedCat])[0] : cat,
+    )
+
+    setBoardCategoriesById((prev) => ({
+      ...prev,
+      [activeBoardId]: nextBoard,
+    }))
     editorSavedFlag.trigger()
+  }
+
+  function selectBoard(boardId) {
+    if (!boardId || boardId === activeBoardId) {
+      return
+    }
+
+    const nextMap = {
+      ...boardCategoriesById,
+      [activeBoardId]: clearUsedFlags(categories),
+    }
+
+    const target = nextMap[boardId] || cloneDefaultCategories()
+    setBoardCategoriesById(nextMap)
+    setActiveBoardId(boardId)
+    setEditingCat(0)
+  }
+
+  function addBoard() {
+    const nextId = `board-${Date.now().toString(36)}`
+    const nextName = `Board ${boardCatalog.length + 1}`
+    const nextCategories = cloneDefaultCategories()
+
+    const nextMap = {
+      ...boardCategoriesById,
+      [activeBoardId]: clearUsedFlags(categories),
+      [nextId]: nextCategories,
+    }
+
+    setBoardCatalog((prev) => [...prev, { id: nextId, name: nextName }])
+    setBoardCategoriesById(nextMap)
+    setActiveBoardId(nextId)
+    setRoomUsedMap(buildEmptyUsedMap())
+    setEditingCat(0)
+    closeBoardClue()
+    setBoardReady(false)
+  }
+
+  function renameBoard(boardId, nextName) {
+    const safeName = sanitizePlainText(nextName, 60).trim()
+    if (!boardId || !safeName) {
+      return
+    }
+
+    setBoardCatalog((prev) =>
+      prev.map((board) =>
+        board.id === boardId ? { ...board, name: safeName } : board,
+      ),
+    )
   }
 
   function savePlayers() {
@@ -640,7 +886,12 @@ function useJeopardyGame() {
   }
 
   function resetCategoriesToDefault() {
-    setCategories(cloneDefaultCategories())
+    const defaults = cloneDefaultCategories()
+    setBoardCategoriesById((prev) => ({
+      ...prev,
+      [activeBoardId]: defaults,
+    }))
+    setRoomUsedMap(buildEmptyUsedMap())
     setEditingCat(0)
   }
 
@@ -723,27 +974,69 @@ function useJeopardyGame() {
     setView('home')
   }
 
-  function regenerateRoomCode() {
-    const nextRoomCode = createRoomCode()
-    setRoomCode(nextRoomCode)
+  function clearRealtimeGameData() {
+    setActiveClue(null)
+    setHostSelection(null)
+    setHostClueState('hidden')
+    setHomeBoardReveal(false)
+    setBoardReady(false)
     setBuzzers({})
+    setConnectedPlayerId(null)
+    setScores({})
+    setRoomUsedMap(buildEmptyUsedMap())
 
-    if (isRemoteSyncEnabled) {
-      const resetUrl = `${FIREBASE_DB_URL}/rooms/${encodeURIComponent(nextRoomCode)}/buzzers.json`
-      fetch(resetUrl, {
+    if (!isRemoteSyncEnabled) {
+      return
+    }
+
+    Promise.all([
+      fetch(`${FIREBASE_DB_URL}/gameState.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'null',
+      }),
+      fetch(`${FIREBASE_DB_URL}/players.json`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
-      }).catch(() => {})
-    }
+      }),
+      fetch(`${FIREBASE_DB_URL}/rooms.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'null',
+      }),
+    ])
+      .then(([gameRes, playersRes, roomsRes]) => {
+        if (!gameRes.ok || !playersRes.ok || !roomsRes.ok) {
+          const failedStatus = [gameRes.status, playersRes.status, roomsRes.status].find(
+            (status) => status >= 400,
+          )
+          throw new Error(formatFirebaseHttpError('clear realtime data', failedStatus || 500))
+        }
+
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'ok',
+          lastError: '',
+          lastWriteAt: Date.now(),
+        }))
+      })
+      .catch((error) => {
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'error',
+          lastError: error?.message || 'clear failed',
+        }))
+      })
   }
 
   return {
     state: {
       view,
-      roomCode,
       isRemoteSyncEnabled,
       firebaseStatus,
+      boardCatalog,
+      activeBoardId,
       categories,
       scores,
       players,
@@ -778,7 +1071,10 @@ function useJeopardyGame() {
       sendSelectionToPlayer,
       resetCategoriesToDefault,
       resetScores,
-      regenerateRoomCode,
+      clearRealtimeGameData,
+      selectBoard,
+      addBoard,
+      renameBoard,
       connectPlayer,
       buzzIn,
       resetBuzzer,

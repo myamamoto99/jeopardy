@@ -14,9 +14,10 @@ function App({ initialView }) {
   const {
     state: {
       view,
-      roomCode,
       isRemoteSyncEnabled,
       firebaseStatus,
+      boardCatalog,
+      activeBoardId,
       categories,
       scores,
       players,
@@ -47,7 +48,10 @@ function App({ initialView }) {
       sendSelectionToPlayer,
       resetCategoriesToDefault,
       resetScores,
-      regenerateRoomCode,
+      clearRealtimeGameData,
+      selectBoard,
+      addBoard,
+      renameBoard,
       connectPlayer,
       buzzIn,
       resetBuzzer,
@@ -89,7 +93,6 @@ function App({ initialView }) {
 
       {view === 'host' && (
         <HostView
-          roomCode={roomCode}
           isRemoteSyncEnabled={isRemoteSyncEnabled}
           firebaseStatus={firebaseStatus}
           categories={categories}
@@ -113,7 +116,7 @@ function App({ initialView }) {
           onUpdateScore={updateScore}
           onResetBuzzer={resetBuzzer}
           onResetAllBuzzers={resetAllBuzzers}
-          onRegenerateRoomCode={regenerateRoomCode}
+          onClearRealtimeData={clearRealtimeGameData}
           onShowJoinLobby={() => {
             closeBoardClue()
             setBoardReady(false)
@@ -124,7 +127,6 @@ function App({ initialView }) {
 
       {view === 'player' && (
         <PlayerView
-          roomCode={roomCode}
           categories={categories}
           activeClue={activeClue}
           hostClueState={hostClueState}
@@ -138,9 +140,14 @@ function App({ initialView }) {
 
       {view === 'editor' && (
         <EditorView
+          boardCatalog={boardCatalog}
+          activeBoardId={activeBoardId}
           categories={categories}
           editingCat={editingCat}
           setEditingCat={setEditingCat}
+          onSelectBoard={selectBoard}
+          onAddBoard={addBoard}
+          onRenameBoard={renameBoard}
           onHome={() => setView('home')}
           onSave={saveEditorChanges}
           onReset={() => {
