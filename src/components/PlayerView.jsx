@@ -65,6 +65,15 @@ function PlayerView({
           />
 
           <ScoreRow players={activePlayers} scores={scores} />
+
+          {buzzerUrl && (
+            <div className="join-panel">
+              <div className="small-meta">Need to join buzzer on another device?</div>
+              <div className="join-panel-qr">
+                <QRCodeCanvas value={buzzerUrl} size={120} level="H" includeMargin={true} />
+              </div>
+            </div>
+          )}
         </>
       ) : (
         <div className="clue-view">

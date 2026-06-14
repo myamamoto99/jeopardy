@@ -259,6 +259,23 @@
   margin-top: 10px;
 }
 
+.join-panel {
+  margin-top: 12px;
+  border: 1px solid #1e3a6e;
+  border-radius: 8px;
+  background: #0f1f3d;
+  padding: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.join-panel-qr {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 6px;
+}
+
 .firebase-status-panel {
   border: 1px solid #1e3a6e;
   border-radius: 8px;

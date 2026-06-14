@@ -99,21 +99,14 @@ function HostView({
         </>
       )}
 
-      {!boardReady && (
-        <div style={{ marginBottom: '20px' }}>
-          <button className="btn btn-gold" onClick={onRevealBoard}>
-            Reveal Board (Everyone Ready?)
-          </button>
-        </div>
-      )}
-
-      {boardReady && (
-        <div style={{ marginBottom: '20px' }}>
-          <button className="btn btn-outline" onClick={onShowJoinLobby}>
-            Back to Join Lobby (Show QR)
-          </button>
-        </div>
-      )}
+      <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <button className="btn btn-gold" onClick={onRevealBoard} disabled={boardReady}>
+          {boardReady ? 'Board Revealed' : 'Reveal Board (Everyone Ready?)'}
+        </button>
+        <button className="btn btn-outline" onClick={onShowJoinLobby} disabled={!boardReady}>
+          Back to Join Lobby (Show QR)
+        </button>
+      </div>
 
       <BoardGrid
         categories={categories}
