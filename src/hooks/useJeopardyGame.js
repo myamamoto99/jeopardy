@@ -214,7 +214,7 @@ function useJeopardyGame() {
   const lastSyncedGameStateRef = useRef('')
 
   const [view, setView] = useState('home')
-  const [roomCode, setRoomCode] = useState(loadInitialRoomCode)
+  const [roomCode, setRoomCode] = useState('')
   const [categories, setCategories] = useState(loadInitialCategories)
   const [scores, setScores] = useState({})
   const [players, setPlayers] = useState(['Team 1', 'Team 2', 'Team 3'])
@@ -227,6 +227,14 @@ function useJeopardyGame() {
 
   const [connectedPlayerId, setConnectedPlayerId] = useState(null)
   const [buzzers, setBuzzers] = useState({})
+  const [firebaseStatus, setFirebaseStatus] = useState({
+    envConfigured: isRemoteSyncEnabled,
+    gameStream: isRemoteSyncEnabled ? 'connecting' : 'disabled',
+    buzzerStream: isRemoteSyncEnabled ? 'connecting' : 'disabled',
+    lastWrite: 'idle',
+    lastError: '',
+    lastWriteAt: null,
+  })
 
   const editorSavedFlag = useTimedFlag(2000)
   const playersSavedFlag = useTimedFlag(2000)
@@ -296,7 +304,15 @@ function useJeopardyGame() {
   })
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (roomCode || typeof window === 'undefined') {
+      return
+    }
+
+    setRoomCode(loadInitialRoomCode())
+  }, [roomCode])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !roomCode) {
       return
     }
 
@@ -314,11 +330,29 @@ function useJeopardyGame() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isRemoteSyncEnabled || !roomCode) {
+      setFirebaseStatus((prev) => ({
+        ...prev,
+        gameStream: isRemoteSyncEnabled ? 'idle' : 'disabled',
+      }))
       return
     }
 
     const streamUrl = `${FIREBASE_DB_URL}/rooms/${encodeURIComponent(roomCode)}/gameState.json`
     const source = new EventSource(streamUrl)
+    source.onopen = () => {
+      setFirebaseStatus((prev) => ({
+        ...prev,
+        gameStream: 'connected',
+        lastError: prev.gameStream === 'connected' ? prev.lastError : '',
+      }))
+    }
+    source.onerror = () => {
+      setFirebaseStatus((prev) => ({
+        ...prev,
+        gameStream: 'error',
+        lastError: 'Game stream disconnected',
+      }))
+    }
 
     const applyEventData = (eventData) => {
       try {
@@ -366,6 +400,10 @@ function useJeopardyGame() {
     return () => {
       source.removeEventListener('put', handlePut)
       source.close()
+      setFirebaseStatus((prev) => ({
+        ...prev,
+        gameStream: isRemoteSyncEnabled ? 'idle' : 'disabled',
+      }))
     }
   }, [isRemoteSyncEnabled, roomCode])
 
@@ -392,16 +430,53 @@ function useJeopardyGame() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: serialized,
-    }).catch(() => {})
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`gameState write failed (${response.status})`)
+        }
+
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'ok',
+          lastError: '',
+          lastWriteAt: Date.now(),
+        }))
+      })
+      .catch((error) => {
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'error',
+          lastError: error?.message || 'gameState write failed',
+        }))
+      })
   }, [isRemoteSyncEnabled, roomCode, remoteGameState])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isRemoteSyncEnabled || !roomCode) {
+      setFirebaseStatus((prev) => ({
+        ...prev,
+        buzzerStream: isRemoteSyncEnabled ? 'idle' : 'disabled',
+      }))
       return
     }
 
     const streamUrl = `${FIREBASE_DB_URL}/rooms/${encodeURIComponent(roomCode)}/buzzers.json`
     const source = new EventSource(streamUrl)
+    source.onopen = () => {
+      setFirebaseStatus((prev) => ({
+        ...prev,
+        buzzerStream: 'connected',
+        lastError: prev.buzzerStream === 'connected' ? prev.lastError : '',
+      }))
+    }
+    source.onerror = () => {
+      setFirebaseStatus((prev) => ({
+        ...prev,
+        buzzerStream: 'error',
+        lastError: 'Buzzer stream disconnected',
+      }))
+    }
 
     const applyEventData = (eventData) => {
       try {
@@ -445,6 +520,10 @@ function useJeopardyGame() {
       source.removeEventListener('put', handlePut)
       source.removeEventListener('patch', handlePatch)
       source.close()
+      setFirebaseStatus((prev) => ({
+        ...prev,
+        buzzerStream: isRemoteSyncEnabled ? 'idle' : 'disabled',
+      }))
     }
   }, [isRemoteSyncEnabled, roomCode])
 
@@ -458,7 +537,26 @@ function useJeopardyGame() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(nextBuzzers),
-    }).catch(() => {})
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`buzzers write failed (${response.status})`)
+        }
+
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'ok',
+          lastError: '',
+          lastWriteAt: Date.now(),
+        }))
+      })
+      .catch((error) => {
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'error',
+          lastError: error?.message || 'buzzers write failed',
+        }))
+      })
   }
 
   function showClue(ci, vi) {
@@ -645,6 +743,7 @@ function useJeopardyGame() {
       view,
       roomCode,
       isRemoteSyncEnabled,
+      firebaseStatus,
       categories,
       scores,
       players,

@@ -259,6 +259,47 @@
   margin-top: 10px;
 }
 
+.firebase-status-panel {
+  border: 1px solid #1e3a6e;
+  border-radius: 8px;
+  background: #0b1831;
+  padding: 10px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.firebase-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d0def8;
+  margin: 4px 0;
+}
+
+.firebase-status-error {
+  margin-top: 6px;
+  color: #ff9c9c;
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.status-dot.ok {
+  background: #5ad17a;
+}
+
+.status-dot.warn {
+  background: #e6c65c;
+}
+
+.status-dot.error {
+  background: #ff6f6f;
+}
+
 .host-panel p {
   margin: 8px 0;
 }

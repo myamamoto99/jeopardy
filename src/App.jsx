@@ -16,6 +16,7 @@ function App({ initialView }) {
       view,
       roomCode,
       isRemoteSyncEnabled,
+      firebaseStatus,
       categories,
       scores,
       players,
@@ -90,6 +91,7 @@ function App({ initialView }) {
         <HostView
           roomCode={roomCode}
           isRemoteSyncEnabled={isRemoteSyncEnabled}
+          firebaseStatus={firebaseStatus}
           categories={categories}
           hostSelection={hostSelection}
           activePlayers={activePlayers}

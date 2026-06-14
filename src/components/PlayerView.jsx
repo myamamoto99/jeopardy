@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
 import BoardGrid from './BoardGrid'
 import ScoreRow from './ScoreRow'
@@ -14,9 +15,17 @@ function PlayerView({
   onHome,
   onHost,
 }) {
-  const buzzerUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}${window.location.pathname.replace(/\/player$/, '')}/buzzer?room=${encodeURIComponent(roomCode || '')}`
-    : ''
+  const [buzzerUrl, setBuzzerUrl] = useState('')
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !roomCode) {
+      return
+    }
+
+    setBuzzerUrl(
+      `${window.location.origin}${window.location.pathname.replace(/\/player$/, '')}/buzzer?room=${encodeURIComponent(roomCode)}`,
+    )
+  }, [roomCode])
 
   return (
     <div className="page board-page">
@@ -35,7 +44,11 @@ function PlayerView({
           <div className="title player-title">JEOPARDY!</div>
           <div className="subcopy">Scan to join the game</div>
           <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}>
-            <QRCodeCanvas value={buzzerUrl} size={256} level="H" includeMargin={true} />
+            {buzzerUrl ? (
+              <QRCodeCanvas value={buzzerUrl} size={256} level="H" includeMargin={true} />
+            ) : (
+              <div className="small-meta">Preparing join code...</div>
+            )}
           </div>
           <div className="subcopy">Waiting for host to reveal the board...</div>
         </div>

@@ -6,6 +6,7 @@ import { buildYouTubeEmbedUrl } from '../utils/youtube'
 function HostView({
   roomCode,
   isRemoteSyncEnabled,
+  firebaseStatus,
   categories,
   hostSelection,
   activePlayers,
@@ -56,12 +57,45 @@ function HostView({
       </div>
 
       {isRemoteSyncEnabled && (
-        <div className="info-panel" style={{ marginTop: '8px' }}>
-          <strong>Room:</strong> {roomCode}{' '}
-          <button className="btn btn-outline" onClick={onRegenerateRoomCode}>
-            New Room Code
-          </button>
-        </div>
+        <>
+          <div className="info-panel" style={{ marginTop: '8px' }}>
+            <strong>Room:</strong> {roomCode}{' '}
+            <button className="btn btn-outline" onClick={onRegenerateRoomCode}>
+              New Room Code
+            </button>
+          </div>
+
+          <div className="firebase-status-panel">
+            <div className="firebase-status-line">
+              <span
+                className={`status-dot ${firebaseStatus?.envConfigured ? 'ok' : 'error'}`}
+              />
+              Env: {firebaseStatus?.envConfigured ? 'configured' : 'missing NEXT_PUBLIC_FIREBASE_DB_URL'}
+            </div>
+            <div className="firebase-status-line">
+              <span
+                className={`status-dot ${firebaseStatus?.gameStream === 'connected' ? 'ok' : 'warn'}`}
+              />
+              Game stream: {firebaseStatus?.gameStream || 'idle'}
+            </div>
+            <div className="firebase-status-line">
+              <span
+                className={`status-dot ${firebaseStatus?.buzzerStream === 'connected' ? 'ok' : 'warn'}`}
+              />
+              Buzzer stream: {firebaseStatus?.buzzerStream || 'idle'}
+            </div>
+            <div className="firebase-status-line">
+              <span
+                className={`status-dot ${firebaseStatus?.lastWrite === 'ok' ? 'ok' : firebaseStatus?.lastWrite === 'error' ? 'error' : 'warn'}`}
+              />
+              Last write: {firebaseStatus?.lastWrite || 'idle'}
+              {firebaseStatus?.lastWriteAt ? ` at ${new Date(firebaseStatus.lastWriteAt).toLocaleTimeString()}` : ''}
+            </div>
+            {firebaseStatus?.lastError && (
+              <div className="firebase-status-error">{firebaseStatus.lastError}</div>
+            )}
+          </div>
+        </>
       )}
 
       {!boardReady && (
