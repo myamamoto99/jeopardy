@@ -64,7 +64,7 @@ function HostView({
               className="btn btn-outline"
               style={{ marginLeft: '8px' }}
               onClick={() => {
-                if (window.confirm('Clear all stored realtime game data (including legacy rooms)?')) {
+                if (window.confirm('Clear players and game state data?')) {
                   onClearRealtimeData()
                 }
               }}

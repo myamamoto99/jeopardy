@@ -863,6 +863,73 @@ function useJeopardyGame() {
       })
   }
 
+  function writeRemoteSingleBuzzer(playerId, value) {
+    if (!isRemoteSyncEnabled || !playerId) {
+      return
+    }
+
+    const writeUrl = `${FIREBASE_DB_URL}/players/${encodeURIComponent(playerId)}.json`
+    fetch(writeUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(value),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(formatFirebaseHttpError('player write', response.status))
+        }
+
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'ok',
+          lastError: '',
+          lastWriteAt: Date.now(),
+        }))
+      })
+      .catch((error) => {
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'error',
+          lastError: error?.message || 'player write failed',
+        }))
+      })
+  }
+
+  function resetAllBuzzersRemote() {
+    if (!isRemoteSyncEnabled) {
+      return
+    }
+
+    const readUrl = `${FIREBASE_DB_URL}/players.json`
+    fetch(readUrl)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(formatFirebaseHttpError('players read', response.status))
+        }
+        return response.json()
+      })
+      .then((raw) => {
+        const normalized = normalizeBuzzers(raw)
+        const updated = Object.entries(normalized).reduce((acc, [id, buzzer]) => {
+          acc[id] = {
+            ...buzzer,
+            buzzedIn: false,
+            buzzTime: null,
+          }
+          return acc
+        }, {})
+
+        writeRemoteBuzzers(updated)
+      })
+      .catch((error) => {
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'error',
+          lastError: error?.message || 'players read failed',
+        }))
+      })
+  }
+
   function showClue(ci, vi) {
     const clue = categories[ci].clues[vi]
     if (clue.used) return
@@ -1048,16 +1115,16 @@ function useJeopardyGame() {
     const playerId = createFirebaseSafeId('player')
     setConnectedPlayerId(playerId)
     setBuzzers((prev) => {
-      const next = {
-        ...prev,
-        [playerId]: {
-          teamIndex,
-          buzzedIn: false,
-          buzzTime: null,
-        },
+      const value = {
+        teamIndex,
+        buzzedIn: false,
+        buzzTime: null,
       }
-      writeRemoteBuzzers(next)
-      return next
+      writeRemoteSingleBuzzer(playerId, value)
+      return {
+        ...prev,
+        [playerId]: value,
+      }
     })
     setView('buzzer')
   }
@@ -1065,31 +1132,31 @@ function useJeopardyGame() {
   function buzzIn() {
     if (!connectedPlayerId || buzzers[connectedPlayerId]?.buzzedIn) return
     setBuzzers((prev) => {
-      const next = {
-        ...prev,
-        [connectedPlayerId]: {
-          ...prev[connectedPlayerId],
-          buzzedIn: true,
-          buzzTime: Date.now(),
-        },
+      const nextValue = {
+        ...prev[connectedPlayerId],
+        buzzedIn: true,
+        buzzTime: Date.now(),
       }
-      writeRemoteBuzzers(next)
-      return next
+      writeRemoteSingleBuzzer(connectedPlayerId, nextValue)
+      return {
+        ...prev,
+        [connectedPlayerId]: nextValue,
+      }
     })
   }
 
   function resetBuzzer(playerId) {
     setBuzzers((prev) => {
-      const next = {
-        ...prev,
-        [playerId]: {
-          ...prev[playerId],
-          buzzedIn: false,
-          buzzTime: null,
-        },
+      const nextValue = {
+        ...prev[playerId],
+        buzzedIn: false,
+        buzzTime: null,
       }
-      writeRemoteBuzzers(next)
-      return next
+      writeRemoteSingleBuzzer(playerId, nextValue)
+      return {
+        ...prev,
+        [playerId]: nextValue,
+      }
     })
   }
 
@@ -1103,16 +1170,17 @@ function useJeopardyGame() {
           buzzTime: null,
         }
       })
-      writeRemoteBuzzers(updated)
       return updated
     })
+
+    resetAllBuzzersRemote()
   }
 
   function disconnectPlayer() {
     setBuzzers((prev) => {
       const updated = { ...prev }
       delete updated[connectedPlayerId]
-      writeRemoteBuzzers(updated)
+      writeRemoteSingleBuzzer(connectedPlayerId, null)
       return updated
     })
     setConnectedPlayerId(null)
@@ -1145,17 +1213,12 @@ function useJeopardyGame() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       }),
-      fetch(`${FIREBASE_DB_URL}/rooms.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: 'null',
-      }),
     ])
-      .then(([gameRes, playersRes, roomsRes]) => {
-        if (!gameRes.ok || !playersRes.ok || !roomsRes.ok) {
-          const failedStatus = [gameRes.status, playersRes.status, roomsRes.status].find(
-            (status) => status >= 400,
-          )
+        .then(([gameRes, playersRes]) => {
+          if (!gameRes.ok || !playersRes.ok) {
+            const failedStatus = [gameRes.status, playersRes.status].find(
+              (status) => status >= 400,
+            )
           throw new Error(formatFirebaseHttpError('clear realtime data', failedStatus || 500))
         }
 
