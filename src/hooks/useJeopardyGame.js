@@ -804,12 +804,13 @@ function useJeopardyGame() {
         answer: sanitizePlainText(clue.answer, 240),
         question: sanitizePlainText(clue.question, 240),
         mediaUrl: sanitizeYouTubeUrl(clue.mediaUrl || ''),
+        used: false,
       })),
     }
 
     const baseBoard = boardCategoriesById[activeBoardId] || clearUsedFlags(categories)
     const nextBoard = baseBoard.map((cat, idx) =>
-      idx === editingCat ? clearUsedFlags([sanitizedCat])[0] : cat,
+      idx === editingCat ? sanitizedCat : cat,
     )
 
     setBoardCategoriesById((prev) => ({
