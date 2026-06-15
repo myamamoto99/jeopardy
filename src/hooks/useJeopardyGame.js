@@ -570,6 +570,33 @@ function useJeopardyGame() {
         gameStream: 'connected',
         lastError: prev.gameStream === 'connected' ? prev.lastError : '',
       }))
+
+      // Fetch current gameState to ensure we have the latest data
+      fetch(streamUrl)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data) {
+            const normalized = normalizeRemoteGameState(data)
+            if (normalized) {
+              applyingRemoteGameRef.current = true
+              if (normalized.activeBoardId && view !== 'editor') {
+                setActiveBoardId(normalized.activeBoardId)
+              }
+              setRoomUsedMap(normalized.roomUsedMap)
+              setScores(normalized.scores)
+              setPlayers(normalized.players)
+              setActiveClue(normalized.activeClue)
+              setHostClueState(normalized.hostClueState)
+              setHostSelection(normalized.hostSelection)
+              setHomeBoardReveal(normalized.homeBoardReveal)
+              setBoardReady(normalized.boardReady)
+              applyingRemoteGameRef.current = false
+            }
+          }
+        })
+        .catch(() => {
+          // Silently fail, will rely on stream updates
+        })
     }
     source.onerror = () => {
       setFirebaseStatus((prev) => ({
@@ -705,41 +732,50 @@ function useJeopardyGame() {
 
   useEffect(() => {
     if (!isRemoteSyncEnabled) {
+      console.log('[gameState write] Remote sync disabled')
       return
     }
 
     if (view !== 'host') {
+      console.log('[gameState write] Not host view, skipping. view=', view)
       return
     }
 
     if (view === 'editor') {
+      console.log('[gameState write] In editor view, skipping')
       return
     }
 
     if (typeof window !== 'undefined' && window.location.pathname.includes('/buzzer')) {
+      console.log('[gameState write] In buzzer path, skipping')
       return
     }
 
     const serialized = JSON.stringify(remoteGameState)
 
     if (applyingRemoteGameRef.current) {
+      console.log('[gameState write] Applying remote update, skipping write')
       lastSyncedGameStateRef.current = serialized
       return
     }
 
     if (lastSyncedGameStateRef.current === serialized) {
+      console.log('[gameState write] No change since last sync, skipping')
       return
     }
 
+    console.log('[gameState write] Writing to Firebase:', serialized)
     lastSyncedGameStateRef.current = serialized
 
     const writeUrl = `${FIREBASE_DB_URL}/gameState.json`
+    console.log('[gameState write] URL:', writeUrl)
     fetch(writeUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: serialized,
     })
       .then((response) => {
+        console.log('[gameState write] Response:', response.status, response.ok)
         if (!response.ok) {
           throw new Error(formatFirebaseHttpError('gameState write', response.status))
         }
@@ -752,6 +788,7 @@ function useJeopardyGame() {
         }))
       })
       .catch((error) => {
+        console.error('[gameState write] Error:', error)
         setFirebaseStatus((prev) => ({
           ...prev,
           lastWrite: 'error',
@@ -777,6 +814,20 @@ function useJeopardyGame() {
         buzzerStream: 'connected',
         lastError: prev.buzzerStream === 'connected' ? prev.lastError : '',
       }))
+
+      // Fetch current buzzers to ensure we have the latest data
+      fetch(streamUrl)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data) {
+            const normalized = normalizeBuzzers(data)
+            buzzersSnapshotRef.current = normalized
+            setBuzzers(normalized)
+          }
+        })
+        .catch(() => {
+          // Silently fail, will rely on stream updates
+        })
     }
     source.onerror = () => {
       setFirebaseStatus((prev) => ({
@@ -827,6 +878,7 @@ function useJeopardyGame() {
 
   function writeRemoteBuzzers(nextBuzzers) {
     if (!isRemoteSyncEnabled) {
+      console.log('[writeRemoteBuzzers] Remote sync disabled')
       return
     }
 
@@ -834,12 +886,14 @@ function useJeopardyGame() {
     buzzersSnapshotRef.current = normalized
 
     const writeUrl = `${FIREBASE_DB_URL}/players.json`
+    console.log('[writeRemoteBuzzers] Writing to:', writeUrl, normalized)
     fetch(writeUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(normalized),
     })
       .then((response) => {
+        console.log('[writeRemoteBuzzers] Response:', response.status, response.ok)
         if (!response.ok) {
           throw new Error(formatFirebaseHttpError('players write', response.status))
         }
@@ -852,6 +906,7 @@ function useJeopardyGame() {
         }))
       })
       .catch((error) => {
+        console.error('[writeRemoteBuzzers] Error:', error)
         setFirebaseStatus((prev) => ({
           ...prev,
           lastWrite: 'error',
