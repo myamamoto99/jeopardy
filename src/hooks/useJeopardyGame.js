@@ -294,10 +294,41 @@ function buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById) {
   }
 }
 
+function applyFirebasePathUpdate(baseValue, path, data) {
+  if (path === '/' || !path) {
+    return data
+  }
+
+  const segments = path.replace(/^\//, '').split('/').filter(Boolean)
+  const next =
+    baseValue && typeof baseValue === 'object'
+      ? JSON.parse(JSON.stringify(baseValue))
+      : {}
+
+  let cursor = next
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const key = segments[i]
+    if (!cursor[key] || typeof cursor[key] !== 'object') {
+      cursor[key] = {}
+    }
+    cursor = cursor[key]
+  }
+
+  const finalKey = segments[segments.length - 1]
+  if (data === null) {
+    delete cursor[finalKey]
+  } else {
+    cursor[finalKey] = data
+  }
+
+  return next
+}
+
 function useJeopardyGame() {
   const isRemoteSyncEnabled = Boolean(FIREBASE_DB_URL)
   const applyingRemoteGameRef = useRef(false)
   const lastSyncedGameStateRef = useRef('')
+  const gameStateSnapshotRef = useRef(null)
   const applyingRemoteBoardsRef = useRef(false)
   const lastSyncedBoardLibraryRef = useRef('')
   const didHydrateLocalCategoriesRef = useRef(false)
@@ -362,6 +393,10 @@ function useJeopardyGame() {
       boardReady,
     ],
   )
+
+  useEffect(() => {
+    gameStateSnapshotRef.current = remoteGameState
+  }, [remoteGameState])
 
   const remoteBoardLibrary = useMemo(
     () => buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById),
@@ -513,11 +548,16 @@ function useJeopardyGame() {
     const applyEventData = (eventData) => {
       try {
         const payload = JSON.parse(eventData)
-        if (payload?.path !== '/') {
+        if (!payload?.path) {
           return
         }
 
-        const normalized = normalizeRemoteGameState(payload.data)
+        const nextRawState = applyFirebasePathUpdate(
+          gameStateSnapshotRef.current || remoteGameState,
+          payload.path,
+          payload.data,
+        )
+        const normalized = normalizeRemoteGameState(nextRawState)
         if (!normalized) {
           return
         }
@@ -554,11 +594,14 @@ function useJeopardyGame() {
     }
 
     const handlePut = (event) => applyEventData(event.data)
+    const handlePatch = (event) => applyEventData(event.data)
 
     source.addEventListener('put', handlePut)
+    source.addEventListener('patch', handlePatch)
 
     return () => {
       source.removeEventListener('put', handlePut)
+      source.removeEventListener('patch', handlePatch)
       source.close()
       setFirebaseStatus((prev) => ({
         ...prev,
@@ -718,17 +761,52 @@ function useJeopardyGame() {
           return
         }
 
-        const buzzerId = path.slice(1)
+        const segments = path.slice(1).split('/').filter(Boolean)
+        const buzzerId = segments[0]
+        if (!buzzerId) {
+          return
+        }
+
         setBuzzers((prev) => {
           const next = { ...prev }
-          if (payload.data === null) {
-            delete next[buzzerId]
-          } else {
-            const normalized = normalizeBuzzers({ [buzzerId]: payload.data })
-            if (normalized[buzzerId]) {
-              next[buzzerId] = normalized[buzzerId]
+
+          if (segments.length === 1) {
+            if (payload.data === null) {
+              delete next[buzzerId]
+            } else {
+              const normalized = normalizeBuzzers({ [buzzerId]: payload.data })
+              if (normalized[buzzerId]) {
+                next[buzzerId] = normalized[buzzerId]
+              }
+            }
+            return next
+          }
+
+          const field = segments[1]
+          if (!next[buzzerId]) {
+            next[buzzerId] = {
+              teamIndex: 0,
+              buzzedIn: false,
+              buzzTime: null,
             }
           }
+
+          if (payload.data === null) {
+            delete next[buzzerId][field]
+          } else {
+            next[buzzerId] = {
+              ...next[buzzerId],
+              [field]: payload.data,
+            }
+          }
+
+          const normalized = normalizeBuzzers({ [buzzerId]: next[buzzerId] })
+          if (normalized[buzzerId]) {
+            next[buzzerId] = normalized[buzzerId]
+          } else {
+            delete next[buzzerId]
+          }
+
           return next
         })
       } catch {
