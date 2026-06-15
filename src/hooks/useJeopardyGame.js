@@ -354,12 +354,14 @@ function useJeopardyGame() {
   const remoteBoardLibrary = useMemo(
     () => ({
       boardCatalog,
-      boardCategoriesById: {
-        ...boardCategoriesById,
-        [activeBoardId]: normalizeCategoriesForStorage(clearUsedFlags(categories)),
-      },
+      boardCategoriesById: Object.fromEntries(
+        Object.entries(boardCategoriesById).map(([boardId, boardCategories]) => [
+          boardId,
+          normalizeCategoriesForStorage(clearUsedFlags(boardCategories)),
+        ]),
+      ),
     }),
-    [boardCatalog, boardCategoriesById, activeBoardId, categories],
+    [boardCatalog, boardCategoriesById],
   )
 
   useCrossTabSync('categories', isRemoteSyncEnabled ? undefined : categories, (newCategories) => {
