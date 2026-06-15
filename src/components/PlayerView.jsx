@@ -80,6 +80,13 @@ function PlayerView({
             {categories[activeClue.ci].name} · ${POINT_VALUES[activeClue.vi]}
           </div>
           <div className="clue-answer">{categories[activeClue.ci].clues[activeClue.vi].answer}</div>
+          {categories[activeClue.ci].clues[activeClue.vi].imageUrl && (
+            <img
+              src={categories[activeClue.ci].clues[activeClue.vi].imageUrl}
+              alt="Clue image"
+              className="clue-image"
+            />
+          )}
           {hostClueState === 'revealed' && (
             <div className="reveal-box">
               {categories[activeClue.ci].clues[activeClue.vi].question}

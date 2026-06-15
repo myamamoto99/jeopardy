@@ -5,6 +5,7 @@ import { cloneDefaultCategories } from '../data/gameData'
 import { sanitizePlainText } from '../utils/inputSecurity'
 import useTimedFlag from './useTimedFlag'
 import { sanitizeYouTubeUrl } from '../utils/youtube'
+import { sanitizeImageUrl } from '../utils/image'
 import { useCrossTabSync } from './useCrossTabSync'
 
 const CATEGORIES_STORAGE_KEY = 'jeopardy.categories.v1'
@@ -105,6 +106,7 @@ function normalizeCategoriesForStorage(categories) {
       answer: sanitizePlainText(clue.answer, 240),
       question: sanitizePlainText(clue.question, 240),
       mediaUrl: sanitizeYouTubeUrl(clue.mediaUrl || ''),
+      imageUrl: sanitizeImageUrl(clue.imageUrl || ''),
       used: clue.used,
     })),
   }))
@@ -148,6 +150,10 @@ function buildCategoriesFromStoredValue(storedValue) {
           mediaUrl:
             typeof savedClue.mediaUrl === 'string'
               ? sanitizeYouTubeUrl(savedClue.mediaUrl)
+              : '',
+          imageUrl:
+            typeof savedClue.imageUrl === 'string'
+              ? sanitizeImageUrl(savedClue.imageUrl)
               : '',
           used: savedClue.used === true,
         }
@@ -959,6 +965,7 @@ function useJeopardyGame() {
         answer: sanitizePlainText(clue.answer, 240),
         question: sanitizePlainText(clue.question, 240),
         mediaUrl: sanitizeYouTubeUrl(clue.mediaUrl || ''),
+        imageUrl: sanitizeImageUrl(clue.imageUrl || ''),
         used: false,
       })),
     }
@@ -1012,6 +1019,7 @@ function useJeopardyGame() {
             answer: sanitizePlainText(clue.answer, 240),
             question: sanitizePlainText(clue.question, 240),
             mediaUrl: sanitizeYouTubeUrl(clue.mediaUrl || ''),
+            imageUrl: sanitizeImageUrl(clue.imageUrl || ''),
             used: false,
           })),
         }

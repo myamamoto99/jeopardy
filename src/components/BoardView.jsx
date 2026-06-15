@@ -44,6 +44,13 @@ function BoardView({
             {categories[activeClue.ci].name} · ${POINT_VALUES[activeClue.vi]}
           </div>
           <div className="clue-answer">{categories[activeClue.ci].clues[activeClue.vi].answer}</div>
+          {categories[activeClue.ci].clues[activeClue.vi].imageUrl && (
+            <img
+              src={categories[activeClue.ci].clues[activeClue.vi].imageUrl}
+              alt="Clue image"
+              className="clue-image"
+            />
+          )}
           <div className="subcopy">Phrase your response as a question!</div>
           {homeBoardReveal && (
             <div className="reveal-box">

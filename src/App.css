@@ -351,6 +351,15 @@
   border: 0;
 }
 
+.clue-image {
+  display: block;
+  max-width: 100%;
+  max-height: 400px;
+  margin: 16px auto 0;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
 .section-label {
   margin-top: 18px;
   color: #7a90b8;

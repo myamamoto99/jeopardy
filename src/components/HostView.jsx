@@ -143,6 +143,18 @@ function HostView({
           <p>
             <strong>Music link:</strong> {selectedClue.mediaUrl ? 'Added' : 'Not set'}
           </p>
+          <p>
+            <strong>Image:</strong> {selectedClue.imageUrl ? 'Added' : 'Not set'}
+          </p>
+          {selectedClue.imageUrl && (
+            <div className="clip-player">
+              <img
+                src={selectedClue.imageUrl}
+                alt="Clue image"
+                className="clue-image"
+              />
+            </div>
+          )}
           <div className="action-row">
             <button className="btn btn-blue" onClick={onSendToPlayer}>
               Send to Player Screen

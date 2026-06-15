@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { POINT_VALUES } from '../data/gameData'
 import { isPotentiallyUnsafeText, sanitizePlainText } from '../utils/inputSecurity'
 import { isSafeYouTubeUrl, sanitizeYouTubeUrl } from '../utils/youtube'
+import { isSafeImageUrl, sanitizeImageUrl } from '../utils/image'
 
 function EditorView({
   boardCatalog,
@@ -47,6 +48,7 @@ function EditorView({
         answer: sanitizePlainText(clue.answer, 240),
         question: sanitizePlainText(clue.question, 240),
         mediaUrl: sanitizeYouTubeUrl(clue.mediaUrl || ''),
+        imageUrl: sanitizeImageUrl(clue.imageUrl || ''),
       })),
     }
   }
@@ -63,9 +65,9 @@ function EditorView({
     setEditingCat(i)
   }
 
-  const hasInvalidMediaUrl = draftClues.some(
-    (clue) => clue.mediaUrl && !isSafeYouTubeUrl(clue.mediaUrl),
-  )
+  const hasInvalidMediaUrl =
+    draftClues.some((clue) => clue.mediaUrl && !isSafeYouTubeUrl(clue.mediaUrl)) ||
+    draftClues.some((clue) => clue.imageUrl && !isSafeImageUrl(clue.imageUrl))
   const hasUnsafeText =
     isPotentiallyUnsafeText(draftName) ||
     draftClues.some(
@@ -219,6 +221,32 @@ function EditorView({
               {clue.mediaUrl && !isSafeYouTubeUrl(clue.mediaUrl) && (
                 <div className="small-meta">
                   Invalid link. Use an https YouTube URL from youtube.com or youtu.be.
+                </div>
+              )}
+              <label>Image Link (https image URL)</label>
+              <input
+                value={clue.imageUrl || ''}
+                onChange={(e) => {
+                  setDraftClues((prev) =>
+                    prev.map((item, idx) =>
+                      idx === vi ? { ...item, imageUrl: e.target.value } : item,
+                    ),
+                  )
+                }}
+                onBlur={(e) => {
+                  const sanitized = sanitizeImageUrl(e.target.value)
+                  if (!sanitized && e.target.value.trim()) return
+                  setDraftClues((prev) =>
+                    prev.map((item, idx) =>
+                      idx === vi ? { ...item, imageUrl: sanitized } : item,
+                    ),
+                  )
+                }}
+                placeholder="https://example.com/image.jpg"
+              />
+              {clue.imageUrl && !isSafeImageUrl(clue.imageUrl) && (
+                <div className="small-meta">
+                  Invalid link. Must be an https URL.
                 </div>
               )}
             </div>
