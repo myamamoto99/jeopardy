@@ -1,3 +1,0 @@
-:HL["/_next/static/chunks/24i0erfr5_afc.css","style"]
-:HL["/_next/static/chunks/27vzfkapqptfg.css","style"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"buzzer","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"3VjK5JG7aYn6O5S2KrEIg"}
