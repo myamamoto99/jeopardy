@@ -708,6 +708,10 @@ function useJeopardyGame() {
       return
     }
 
+    if (view !== 'host') {
+      return
+    }
+
     if (view === 'editor') {
       return
     }
