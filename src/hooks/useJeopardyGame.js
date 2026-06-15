@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { initializeApp, getApps } from 'firebase/app'
+import { getDatabase, ref as dbRef, set as dbSet } from 'firebase/database'
 import { cloneDefaultCategories } from '../data/gameData'
 import { sanitizePlainText } from '../utils/inputSecurity'
 import useTimedFlag from './useTimedFlag'
@@ -7,16 +9,25 @@ import { useCrossTabSync } from './useCrossTabSync'
 
 const CATEGORIES_STORAGE_KEY = 'jeopardy.categories.v1'
 const FIREBASE_DB_URL = (process.env.NEXT_PUBLIC_FIREBASE_DB_URL || '').replace(/\/$/, '')
+
+// Firebase SDK uses WebSocket for writes — avoids CORS preflight that blocks REST PUT requests
+let _firebaseDb = null
+function getFirebaseDb() {
+  if (typeof window === 'undefined' || !FIREBASE_DB_URL) return null
+  if (_firebaseDb) return _firebaseDb
+  try {
+    const apps = getApps()
+    const app = apps.length > 0 ? apps[0] : initializeApp({ databaseURL: FIREBASE_DB_URL })
+    _firebaseDb = getDatabase(app)
+  } catch (err) {
+    console.error('[Firebase SDK] Init failed:', err)
+  }
+  return _firebaseDb
+}
 const DEFAULT_CATEGORIES = cloneDefaultCategories()
 const CATEGORY_COUNT = DEFAULT_CATEGORIES.length
 const CLUE_COUNT = DEFAULT_CATEGORIES[0]?.clues?.length || 5
 
-function formatFirebaseHttpError(operation, status) {
-  if (status === 401 || status === 403) {
-    return `${operation} failed (${status}): Permission denied. Check Firebase RTDB Rules for read/write access.`
-  }
-  return `${operation} failed (${status})`
-}
 
 function createFirebaseSafeId(prefix) {
   const randomPart =
@@ -355,6 +366,22 @@ function applyFirebasePathUpdate(baseValue, path, data, mergeRoot = false) {
 
 function useJeopardyGame() {
   const isRemoteSyncEnabled = Boolean(FIREBASE_DB_URL)
+  
+  // Test Firebase connectivity once on mount
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isRemoteSyncEnabled) return
+    
+    const testUrl = `${FIREBASE_DB_URL}/gameState.json`
+    console.log('[useJeopardyGame] Testing Firebase connectivity with GET to:', testUrl)
+    fetch(testUrl, { method: 'GET', headers: { 'Accept': 'application/json' } })
+      .then((res) => {
+        console.log('[useJeopardyGame] GET test response:', res.status, res.ok)
+      })
+      .catch((err) => {
+        console.error('[useJeopardyGame] GET test error:', err.message || err)
+      })
+  }, []) // Only run once on mount
+  
   const applyingRemoteGameRef = useRef(false)
   const lastSyncedGameStateRef = useRef('')
   const gameStateSnapshotRef = useRef(null)
@@ -362,6 +389,8 @@ function useJeopardyGame() {
   const applyingRemoteBoardsRef = useRef(false)
   const lastSyncedBoardLibraryRef = useRef('')
   const didHydrateLocalCategoriesRef = useRef(false)
+  const viewRef = useRef('home')
+  const remoteHydratedRef = useRef(false)
 
   const [view, setView] = useState('home')
   const [categories, setCategories] = useState(() => cloneDefaultCategories())
@@ -427,6 +456,15 @@ function useJeopardyGame() {
   useEffect(() => {
     gameStateSnapshotRef.current = remoteGameState
   }, [remoteGameState])
+
+  useEffect(() => {
+    console.log('[boardReady changed] boardReady:', boardReady, 'view:', view)
+  }, [boardReady])
+
+  useEffect(() => {
+    console.log('[view changed] view:', view)
+    viewRef.current = view
+  }, [view])
 
   useEffect(() => {
     buzzersSnapshotRef.current = buzzers
@@ -510,37 +548,16 @@ function useJeopardyGame() {
   }, [isRemoteSyncEnabled, activeBoardId])
 
   function writeRemoteBoardLibrary(nextLibrary) {
-    if (!isRemoteSyncEnabled) {
-      return
-    }
-
-    const serialized = JSON.stringify(nextLibrary)
-    lastSyncedBoardLibraryRef.current = serialized
-
-    const writeUrl = `${FIREBASE_DB_URL}/boards/library.json`
-    fetch(writeUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: serialized,
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(formatFirebaseHttpError('boards write', response.status))
-        }
-
-        setFirebaseStatus((prev) => ({
-          ...prev,
-          lastWrite: 'ok',
-          lastError: '',
-          lastWriteAt: Date.now(),
-        }))
+    if (!isRemoteSyncEnabled) return
+    lastSyncedBoardLibraryRef.current = JSON.stringify(nextLibrary)
+    const db = getFirebaseDb()
+    if (!db) return
+    dbSet(dbRef(db, 'boards/library'), nextLibrary)
+      .then(() => {
+        setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'ok', lastError: '', lastWriteAt: Date.now() }))
       })
       .catch((error) => {
-        setFirebaseStatus((prev) => ({
-          ...prev,
-          lastWrite: 'error',
-          lastError: error?.message || 'boards write failed',
-        }))
+        setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'error', lastError: error?.message || 'boards write failed' }))
       })
   }
 
@@ -562,43 +579,20 @@ function useJeopardyGame() {
       return
     }
 
+    remoteHydratedRef.current = false
+
     const streamUrl = `${FIREBASE_DB_URL}/gameState.json`
     const source = new EventSource(streamUrl)
     source.onopen = () => {
+      console.log('[gameState SSE] Connected to', streamUrl)
       setFirebaseStatus((prev) => ({
         ...prev,
         gameStream: 'connected',
         lastError: prev.gameStream === 'connected' ? prev.lastError : '',
       }))
-
-      // Fetch current gameState to ensure we have the latest data
-      fetch(streamUrl)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data) {
-            const normalized = normalizeRemoteGameState(data)
-            if (normalized) {
-              applyingRemoteGameRef.current = true
-              if (normalized.activeBoardId && view !== 'editor') {
-                setActiveBoardId(normalized.activeBoardId)
-              }
-              setRoomUsedMap(normalized.roomUsedMap)
-              setScores(normalized.scores)
-              setPlayers(normalized.players)
-              setActiveClue(normalized.activeClue)
-              setHostClueState(normalized.hostClueState)
-              setHostSelection(normalized.hostSelection)
-              setHomeBoardReveal(normalized.homeBoardReveal)
-              setBoardReady(normalized.boardReady)
-              applyingRemoteGameRef.current = false
-            }
-          }
-        })
-        .catch(() => {
-          // Silently fail, will rely on stream updates
-        })
     }
-    source.onerror = () => {
+    source.onerror = (err) => {
+      console.error('[gameState SSE] Error / disconnected', err)
       setFirebaseStatus((prev) => ({
         ...prev,
         gameStream: 'error',
@@ -609,21 +603,24 @@ function useJeopardyGame() {
     const applyEventData = (eventData, mergeRoot = false) => {
       try {
         const payload = JSON.parse(eventData)
+        console.log('[gameState SSE] event path:', payload?.path, 'data:', payload?.data)
         if (!payload?.path) {
           return
         }
 
         const nextRawState = applyFirebasePathUpdate(
-          gameStateSnapshotRef.current || remoteGameState,
+          gameStateSnapshotRef.current || {},
           payload.path,
           payload.data,
           mergeRoot,
         )
         const normalized = normalizeRemoteGameState(nextRawState)
         if (!normalized) {
+          console.log('[gameState SSE] normalized is null (empty Firebase state), skipping state update')
           return
         }
 
+        console.log('[gameState SSE] applying state: boardReady=', normalized.boardReady, 'activeClue=', normalized.activeClue)
         applyingRemoteGameRef.current = true
         lastSyncedGameStateRef.current = JSON.stringify({
           activeBoardId: normalized.activeBoardId,
@@ -637,7 +634,7 @@ function useJeopardyGame() {
           boardReady: normalized.boardReady,
         })
 
-        if (normalized.activeBoardId && view !== 'editor') {
+        if (normalized.activeBoardId && viewRef.current !== 'editor') {
           setActiveBoardId(normalized.activeBoardId)
         }
         setRoomUsedMap(normalized.roomUsedMap)
@@ -648,15 +645,22 @@ function useJeopardyGame() {
         setHostSelection(normalized.hostSelection)
         setHomeBoardReveal(normalized.homeBoardReveal)
         setBoardReady(normalized.boardReady)
-      } catch {
-        // Ignore malformed stream event payloads.
+      } catch (err) {
+        console.error('[gameState SSE] applyEventData error:', err)
       } finally {
         applyingRemoteGameRef.current = false
       }
     }
 
-    const handlePut = (event) => applyEventData(event.data, false)
-    const handlePatch = (event) => applyEventData(event.data, true)
+    const handlePut = (event) => {
+      console.log('[gameState SSE] put event received')
+      remoteHydratedRef.current = true
+      applyEventData(event.data, false)
+    }
+    const handlePatch = (event) => {
+      console.log('[gameState SSE] patch event received')
+      applyEventData(event.data, true)
+    }
 
     source.addEventListener('put', handlePut)
     source.addEventListener('patch', handlePatch)
@@ -670,7 +674,7 @@ function useJeopardyGame() {
         gameStream: isRemoteSyncEnabled ? 'idle' : 'disabled',
       }))
     }
-  }, [isRemoteSyncEnabled, view])
+  }, [isRemoteSyncEnabled])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isRemoteSyncEnabled) {
@@ -702,7 +706,7 @@ function useJeopardyGame() {
             return currentBoardId
           }
 
-          if (view === 'editor') {
+          if (viewRef.current === 'editor') {
             return currentBoardId
           }
 
@@ -723,7 +727,7 @@ function useJeopardyGame() {
       source.removeEventListener('put', handlePut)
       source.close()
     }
-  }, [isRemoteSyncEnabled, view])
+  }, [isRemoteSyncEnabled])
 
   useEffect(() => {
     const base = boardCategoriesById[activeBoardId] || cloneDefaultCategories()
@@ -751,11 +755,15 @@ function useJeopardyGame() {
       return
     }
 
+    if (!remoteHydratedRef.current) {
+      console.log('[gameState write] Not yet hydrated from Firebase, skipping')
+      return
+    }
+
     const serialized = JSON.stringify(remoteGameState)
 
     if (applyingRemoteGameRef.current) {
       console.log('[gameState write] Applying remote update, skipping write')
-      lastSyncedGameStateRef.current = serialized
       return
     }
 
@@ -764,22 +772,18 @@ function useJeopardyGame() {
       return
     }
 
-    console.log('[gameState write] Writing to Firebase:', serialized)
+    console.log('[gameState write] Writing via Firebase SDK, boardReady:', remoteGameState.boardReady)
     lastSyncedGameStateRef.current = serialized
 
-    const writeUrl = `${FIREBASE_DB_URL}/gameState.json`
-    console.log('[gameState write] URL:', writeUrl)
-    fetch(writeUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: serialized,
-    })
-      .then((response) => {
-        console.log('[gameState write] Response:', response.status, response.ok)
-        if (!response.ok) {
-          throw new Error(formatFirebaseHttpError('gameState write', response.status))
-        }
+    const db = getFirebaseDb()
+    if (!db) {
+      console.error('[gameState write] Firebase SDK not available')
+      return
+    }
 
+    dbSet(dbRef(db, 'gameState'), remoteGameState)
+      .then(() => {
+        console.log('[gameState write] Success!')
         setFirebaseStatus((prev) => ({
           ...prev,
           lastWrite: 'ok',
@@ -788,7 +792,7 @@ function useJeopardyGame() {
         }))
       })
       .catch((error) => {
-        console.error('[gameState write] Error:', error)
+        console.error('[gameState write] Error:', error?.name, error?.message)
         setFirebaseStatus((prev) => ({
           ...prev,
           lastWrite: 'error',
@@ -814,20 +818,6 @@ function useJeopardyGame() {
         buzzerStream: 'connected',
         lastError: prev.buzzerStream === 'connected' ? prev.lastError : '',
       }))
-
-      // Fetch current buzzers to ensure we have the latest data
-      fetch(streamUrl)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data) {
-            const normalized = normalizeBuzzers(data)
-            buzzersSnapshotRef.current = normalized
-            setBuzzers(normalized)
-          }
-        })
-        .catch(() => {
-          // Silently fail, will rely on stream updates
-        })
     }
     source.onerror = () => {
       setFirebaseStatus((prev) => ({
@@ -877,50 +867,22 @@ function useJeopardyGame() {
   }, [isRemoteSyncEnabled])
 
   function writeRemoteBuzzers(nextBuzzers) {
-    if (!isRemoteSyncEnabled) {
-      console.log('[writeRemoteBuzzers] Remote sync disabled')
-      return
-    }
-
+    if (!isRemoteSyncEnabled) return
     const normalized = normalizeBuzzers(nextBuzzers)
     buzzersSnapshotRef.current = normalized
-
-    const writeUrl = `${FIREBASE_DB_URL}/players.json`
-    console.log('[writeRemoteBuzzers] Writing to:', writeUrl, normalized)
-    fetch(writeUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(normalized),
-    })
-      .then((response) => {
-        console.log('[writeRemoteBuzzers] Response:', response.status, response.ok)
-        if (!response.ok) {
-          throw new Error(formatFirebaseHttpError('players write', response.status))
-        }
-
-        setFirebaseStatus((prev) => ({
-          ...prev,
-          lastWrite: 'ok',
-          lastError: '',
-          lastWriteAt: Date.now(),
-        }))
+    const db = getFirebaseDb()
+    if (!db) return
+    dbSet(dbRef(db, 'players'), normalized)
+      .then(() => {
+        setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'ok', lastError: '', lastWriteAt: Date.now() }))
       })
       .catch((error) => {
-        console.error('[writeRemoteBuzzers] Error:', error)
-        setFirebaseStatus((prev) => ({
-          ...prev,
-          lastWrite: 'error',
-          lastError: error?.message || 'buzzers write failed',
-        }))
+        setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'error', lastError: error?.message || 'buzzers write failed' }))
       })
   }
 
   function writeRemoteSingleBuzzer(playerId, value) {
-    if (!isRemoteSyncEnabled || !playerId) {
-      return
-    }
-
-    const writeUrl = `${FIREBASE_DB_URL}/players/${encodeURIComponent(playerId)}.json`
+    if (!isRemoteSyncEnabled || !playerId) return
 
     if (value === null) {
       const next = { ...(buzzersSnapshotRef.current || {}) }
@@ -936,29 +898,14 @@ function useJeopardyGame() {
       }
     }
 
-    fetch(writeUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(value),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(formatFirebaseHttpError('player write', response.status))
-        }
-
-        setFirebaseStatus((prev) => ({
-          ...prev,
-          lastWrite: 'ok',
-          lastError: '',
-          lastWriteAt: Date.now(),
-        }))
+    const db = getFirebaseDb()
+    if (!db) return
+    dbSet(dbRef(db, `players/${playerId}`), value)
+      .then(() => {
+        setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'ok', lastError: '', lastWriteAt: Date.now() }))
       })
       .catch((error) => {
-        setFirebaseStatus((prev) => ({
-          ...prev,
-          lastWrite: 'error',
-          lastError: error?.message || 'player write failed',
-        }))
+        setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'error', lastError: error?.message || 'player write failed' }))
       })
   }
 
@@ -1231,43 +1178,20 @@ function useJeopardyGame() {
     setScores({})
     setRoomUsedMap(buildEmptyUsedMap())
 
-    if (!isRemoteSyncEnabled) {
-      return
-    }
+    if (!isRemoteSyncEnabled) return
+
+    const db = getFirebaseDb()
+    if (!db) return
 
     Promise.all([
-      fetch(`${FIREBASE_DB_URL}/gameState.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: 'null',
-      }),
-      fetch(`${FIREBASE_DB_URL}/players.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }),
+      dbSet(dbRef(db, 'gameState'), null),
+      dbSet(dbRef(db, 'players'), {}),
     ])
-      .then(([gameRes, playersRes]) => {
-        if (!gameRes.ok || !playersRes.ok) {
-          const failedStatus = [gameRes.status, playersRes.status].find(
-            (status) => status >= 400,
-          )
-          throw new Error(formatFirebaseHttpError('clear realtime data', failedStatus || 500))
-        }
-
-        setFirebaseStatus((prev) => ({
-          ...prev,
-          lastWrite: 'ok',
-          lastError: '',
-          lastWriteAt: Date.now(),
-        }))
+      .then(() => {
+        setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'ok', lastError: '', lastWriteAt: Date.now() }))
       })
       .catch((error) => {
-        setFirebaseStatus((prev) => ({
-          ...prev,
-          lastWrite: 'error',
-          lastError: error?.message || 'clear failed',
-        }))
+        setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'error', lastError: error?.message || 'clear failed' }))
       })
   }
 
