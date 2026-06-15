@@ -1076,16 +1076,6 @@ function useJeopardyGame() {
     setHostClueState(revealAnswer ? 'revealed' : 'hidden')
   }
 
-  function resetCategoriesToDefault() {
-    const defaults = cloneDefaultCategories()
-    setBoardCategoriesById((prev) => ({
-      ...prev,
-      [activeBoardId]: defaults,
-    }))
-    setRoomUsedMap(buildEmptyUsedMap())
-    setEditingCat(0)
-  }
-
   function resetScores() {
     setScores({})
   }
@@ -1234,7 +1224,6 @@ function useJeopardyGame() {
       savePlayers,
       openHostSelection,
       sendSelectionToPlayer,
-      resetCategoriesToDefault,
       resetScores,
       clearRealtimeGameData,
       selectBoard,

@@ -46,7 +46,6 @@ function App({ initialView }) {
       savePlayers,
       openHostSelection,
       sendSelectionToPlayer,
-      resetCategoriesToDefault,
       resetScores,
       clearRealtimeGameData,
       selectBoard,
@@ -150,11 +149,6 @@ function App({ initialView }) {
           onRenameBoard={renameBoard}
           onHome={() => setView('home')}
           onSave={saveEditorChanges}
-          onReset={() => {
-            if (window.confirm('Reset ALL questions to default sample content?')) {
-              resetCategoriesToDefault()
-            }
-          }}
           showSaved={editorSaved}
         />
       )}

@@ -14,12 +14,12 @@ function EditorView({
   onRenameBoard,
   onHome,
   onSave,
-  onReset,
   showSaved,
 }) {
   const cat = categories[editingCat]
   const activeBoard =
     boardCatalog.find((board) => board.id === activeBoardId) || boardCatalog[0]
+  const [boardSelected, setBoardSelected] = useState(false)
   const [draftBoardName, setDraftBoardName] = useState(activeBoard?.name || '')
   const [draftName, setDraftName] = useState(cat.name)
   const [draftClues, setDraftClues] = useState(cat.clues)
@@ -83,12 +83,18 @@ function EditorView({
         <div className="action-row">
           <select
             className="board-select"
-            value={activeBoardId}
+            value={boardSelected ? activeBoardId : ''}
             onChange={(e) => {
-              commitDraft()
+              if (boardSelected) commitDraft()
+              setBoardSelected(true)
               onSelectBoard(e.target.value)
             }}
           >
+            {!boardSelected && (
+              <option value="" disabled>
+                -- Select a board --
+              </option>
+            )}
             {boardCatalog.map((board) => (
               <option key={board.id} value={board.id}>
                 {board.name}
@@ -98,7 +104,8 @@ function EditorView({
           <button
             className="btn btn-outline"
             onClick={() => {
-              onAddBoard(buildDraftCategory())
+              onAddBoard(boardSelected ? buildDraftCategory() : null)
+              setBoardSelected(true)
             }}
           >
             Add Board
@@ -106,132 +113,135 @@ function EditorView({
         </div>
       </div>
 
-      <div className="editor-card">
-        <label>Board Name</label>
-        <input
-          className="board-select"
-          value={draftBoardName}
-          onChange={(e) => setDraftBoardName(e.target.value)}
-          onBlur={(e) => {
-            const safeName = sanitizePlainText(e.target.value, 60).trim()
-            const finalName = safeName || activeBoard?.name || 'Board'
-            setDraftBoardName(finalName)
-            if (activeBoard) {
-              onRenameBoard(activeBoard.id, finalName)
-            }
-          }}
-        />
-      </div>
+      {!boardSelected ? (
+        <div className="editor-empty">Select a board above to start editing.</div>
+      ) : (
+        <>
+          <div className="editor-card">
+            <label>Board Name</label>
+            <input
+              className="board-select"
+              value={draftBoardName}
+              onChange={(e) => setDraftBoardName(e.target.value)}
+              onBlur={(e) => {
+                const safeName = sanitizePlainText(e.target.value, 60).trim()
+                const finalName = safeName || activeBoard?.name || 'Board'
+                setDraftBoardName(finalName)
+                if (activeBoard) {
+                  onRenameBoard(activeBoard.id, finalName)
+                }
+              }}
+            />
+          </div>
 
-      <div className="tab-row">
-        {categories.map((item, idx) => (
-          <button
-            key={item.name + idx}
-            className={`tab ${idx === editingCat ? 'active' : ''}`}
-            onClick={() => syncDraft(idx)}
-          >
-            {item.name}
-          </button>
-        ))}
-      </div>
+          <div className="tab-row">
+            {categories.map((item, idx) => (
+              <button
+                key={item.name + idx}
+                className={`tab ${idx === editingCat ? 'active' : ''}`}
+                onClick={() => syncDraft(idx)}
+              >
+                {item.name}
+              </button>
+            ))}
+          </div>
 
-      <div className="editor-card">
-        <label>Category Name</label>
-        <input
-          value={draftName}
-          onChange={(e) => setDraftName(e.target.value)}
-          onBlur={(e) => setDraftName(sanitizePlainText(e.target.value, 60))}
-        />
-      </div>
+          <div className="editor-card">
+            <label>Category Name</label>
+            <input
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onBlur={(e) => setDraftName(sanitizePlainText(e.target.value, 60))}
+            />
+          </div>
 
-      {draftClues.map((clue, vi) => (
-        <div className="editor-card" key={`draft-${vi}`}>
-          <div className="pts">${POINT_VALUES[vi]}</div>
-          <label>Clue - what players read</label>
-          <textarea
-            rows={2}
-            value={clue.answer}
-            onChange={(e) => {
-              setDraftClues((prev) =>
-                prev.map((item, idx) => (idx === vi ? { ...item, answer: e.target.value } : item)),
-              )
-            }}
-            onBlur={(e) => {
-              const sanitized = sanitizePlainText(e.target.value, 240)
-              setDraftClues((prev) =>
-                prev.map((item, idx) => (idx === vi ? { ...item, answer: sanitized } : item)),
-              )
-            }}
-          />
-          <label>Correct Question - host answer</label>
-          <textarea
-            rows={2}
-            value={clue.question}
-            onChange={(e) => {
-              setDraftClues((prev) =>
-                prev.map((item, idx) =>
-                  idx === vi ? { ...item, question: e.target.value } : item,
-                ),
-              )
-            }}
-            onBlur={(e) => {
-              const sanitized = sanitizePlainText(e.target.value, 240)
-              setDraftClues((prev) =>
-                prev.map((item, idx) => (idx === vi ? { ...item, question: sanitized } : item)),
-              )
-            }}
-          />
-          <label>Music Clip Link (YouTube URL with optional start/end)</label>
-          <input
-            value={clue.mediaUrl || ''}
-            onChange={(e) => {
-              setDraftClues((prev) =>
-                prev.map((item, idx) =>
-                  idx === vi ? { ...item, mediaUrl: e.target.value } : item,
-                ),
-              )
-            }}
-            onBlur={(e) => {
-              const sanitized = sanitizeYouTubeUrl(e.target.value)
-              if (!sanitized && e.target.value.trim()) {
-                return
-              }
+          {draftClues.map((clue, vi) => (
+            <div className="editor-card" key={`draft-${vi}`}>
+              <div className="pts">${POINT_VALUES[vi]}</div>
+              <label>Clue - what players read</label>
+              <textarea
+                rows={2}
+                value={clue.answer}
+                onChange={(e) => {
+                  setDraftClues((prev) =>
+                    prev.map((item, idx) => (idx === vi ? { ...item, answer: e.target.value } : item)),
+                  )
+                }}
+                onBlur={(e) => {
+                  const sanitized = sanitizePlainText(e.target.value, 240)
+                  setDraftClues((prev) =>
+                    prev.map((item, idx) => (idx === vi ? { ...item, answer: sanitized } : item)),
+                  )
+                }}
+              />
+              <label>Correct Question - host answer</label>
+              <textarea
+                rows={2}
+                value={clue.question}
+                onChange={(e) => {
+                  setDraftClues((prev) =>
+                    prev.map((item, idx) =>
+                      idx === vi ? { ...item, question: e.target.value } : item,
+                    ),
+                  )
+                }}
+                onBlur={(e) => {
+                  const sanitized = sanitizePlainText(e.target.value, 240)
+                  setDraftClues((prev) =>
+                    prev.map((item, idx) => (idx === vi ? { ...item, question: sanitized } : item)),
+                  )
+                }}
+              />
+              <label>Music Clip Link (YouTube URL with optional start/end)</label>
+              <input
+                value={clue.mediaUrl || ''}
+                onChange={(e) => {
+                  setDraftClues((prev) =>
+                    prev.map((item, idx) =>
+                      idx === vi ? { ...item, mediaUrl: e.target.value } : item,
+                    ),
+                  )
+                }}
+                onBlur={(e) => {
+                  const sanitized = sanitizeYouTubeUrl(e.target.value)
+                  if (!sanitized && e.target.value.trim()) {
+                    return
+                  }
 
-              setDraftClues((prev) =>
-                prev.map((item, idx) =>
-                  idx === vi ? { ...item, mediaUrl: sanitized } : item,
-                ),
-              )
-            }}
-            placeholder="https://www.youtube.com/watch?v=VIDEO_ID&t=30s&end=60"
-          />
-          {clue.mediaUrl && !isSafeYouTubeUrl(clue.mediaUrl) && (
+                  setDraftClues((prev) =>
+                    prev.map((item, idx) =>
+                      idx === vi ? { ...item, mediaUrl: sanitized } : item,
+                    ),
+                  )
+                }}
+                placeholder="https://www.youtube.com/watch?v=VIDEO_ID&t=30s&end=60"
+              />
+              {clue.mediaUrl && !isSafeYouTubeUrl(clue.mediaUrl) && (
+                <div className="small-meta">
+                  Invalid link. Use an https YouTube URL from youtube.com or youtu.be.
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div className="action-row">
+            <button
+              className="btn btn-gold"
+              disabled={hasInvalidMediaUrl || hasUnsafeText}
+              onClick={() => onSave(buildDraftCategory(), { persistRemote: true })}
+            >
+              Save Changes
+            </button>
+          </div>
+          {hasUnsafeText && (
             <div className="small-meta">
-              Invalid link. Use an https YouTube URL from youtube.com or youtu.be.
+              Potentially unsafe text detected. Remove HTML-like tags or script-style text
+              before saving.
             </div>
           )}
-        </div>
-      ))}
-
-      <div className="action-row">
-        <button
-          className="btn btn-gold"
-          disabled={hasInvalidMediaUrl || hasUnsafeText}
-          onClick={() => onSave(buildDraftCategory(), { persistRemote: true })}
-        >
-          Save Changes
-        </button>
-        <button className="btn btn-outline" onClick={onReset}>
-          Reset Defaults
-        </button>
-      </div>
-      {hasUnsafeText && (
-        <div className="small-meta">
-          Potentially unsafe text detected. Remove HTML-like tags or script-style text
-          before saving.
-        </div>
+          {showSaved && <div className="saved">Changes saved!</div>}
+        </>
       )}
-      {showSaved && <div className="saved">Changes saved!</div>}
     </div>
   )
 }
