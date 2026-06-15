@@ -39,7 +39,24 @@ function EditorView({
     }
   }, [cat])
 
+  function buildDraftCategory() {
+    return {
+      name: sanitizePlainText(draftName, 60) || cat.name,
+      clues: draftClues.map((clue) => ({
+        ...clue,
+        answer: sanitizePlainText(clue.answer, 240),
+        question: sanitizePlainText(clue.question, 240),
+        mediaUrl: sanitizeYouTubeUrl(clue.mediaUrl || ''),
+      })),
+    }
+  }
+
+  function commitDraft() {
+    onSave(buildDraftCategory(), { persistRemote: false })
+  }
+
   function syncDraft(i) {
+    commitDraft()
     const nextCat = categories[i]
     setDraftName(nextCat.name)
     setDraftClues(nextCat.clues)
@@ -67,7 +84,10 @@ function EditorView({
           <select
             className="board-select"
             value={activeBoardId}
-            onChange={(e) => onSelectBoard(e.target.value)}
+            onChange={(e) => {
+              commitDraft()
+              onSelectBoard(e.target.value)
+            }}
           >
             {boardCatalog.map((board) => (
               <option key={board.id} value={board.id}>
@@ -75,7 +95,12 @@ function EditorView({
               </option>
             ))}
           </select>
-          <button className="btn btn-outline" onClick={onAddBoard}>
+          <button
+            className="btn btn-outline"
+            onClick={() => {
+              onAddBoard(buildDraftCategory())
+            }}
+          >
             Add Board
           </button>
         </div>
@@ -192,17 +217,7 @@ function EditorView({
         <button
           className="btn btn-gold"
           disabled={hasInvalidMediaUrl || hasUnsafeText}
-          onClick={() => {
-            onSave({
-              name: sanitizePlainText(draftName, 60) || cat.name,
-              clues: draftClues.map((clue) => ({
-                ...clue,
-                answer: sanitizePlainText(clue.answer, 240),
-                question: sanitizePlainText(clue.question, 240),
-                mediaUrl: sanitizeYouTubeUrl(clue.mediaUrl || ''),
-              })),
-            })
-          }}
+          onClick={() => onSave(buildDraftCategory(), { persistRemote: true })}
         >
           Save Changes
         </button>

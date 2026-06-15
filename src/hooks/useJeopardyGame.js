@@ -282,6 +282,18 @@ function normalizeBoardLibrary(raw) {
   }
 }
 
+function buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById) {
+  return {
+    boardCatalog,
+    boardCategoriesById: Object.fromEntries(
+      Object.entries(boardCategoriesById).map(([boardId, boardCategories]) => [
+        boardId,
+        normalizeCategoriesForStorage(clearUsedFlags(boardCategories)),
+      ]),
+    ),
+  }
+}
+
 function useJeopardyGame() {
   const isRemoteSyncEnabled = Boolean(FIREBASE_DB_URL)
   const applyingRemoteGameRef = useRef(false)
@@ -352,15 +364,7 @@ function useJeopardyGame() {
   )
 
   const remoteBoardLibrary = useMemo(
-    () => ({
-      boardCatalog,
-      boardCategoriesById: Object.fromEntries(
-        Object.entries(boardCategoriesById).map(([boardId, boardCategories]) => [
-          boardId,
-          normalizeCategoriesForStorage(clearUsedFlags(boardCategories)),
-        ]),
-      ),
-    }),
+    () => buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById),
     [boardCatalog, boardCategoriesById],
   )
 
@@ -436,6 +440,41 @@ function useJeopardyGame() {
     }))
   }, [isRemoteSyncEnabled, activeBoardId])
 
+  function writeRemoteBoardLibrary(nextLibrary) {
+    if (!isRemoteSyncEnabled) {
+      return
+    }
+
+    const serialized = JSON.stringify(nextLibrary)
+    lastSyncedBoardLibraryRef.current = serialized
+
+    const writeUrl = `${FIREBASE_DB_URL}/boards/library.json`
+    fetch(writeUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: serialized,
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(formatFirebaseHttpError('boards write', response.status))
+        }
+
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'ok',
+          lastError: '',
+          lastWriteAt: Date.now(),
+        }))
+      })
+      .catch((error) => {
+        setFirebaseStatus((prev) => ({
+          ...prev,
+          lastWrite: 'error',
+          lastError: error?.message || 'boards write failed',
+        }))
+      })
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return
@@ -496,7 +535,7 @@ function useJeopardyGame() {
           boardReady: normalized.boardReady,
         })
 
-        if (normalized.activeBoardId) {
+        if (normalized.activeBoardId && view !== 'editor') {
           setActiveBoardId(normalized.activeBoardId)
         }
         setRoomUsedMap(normalized.roomUsedMap)
@@ -526,7 +565,7 @@ function useJeopardyGame() {
         gameStream: isRemoteSyncEnabled ? 'idle' : 'disabled',
       }))
     }
-  }, [isRemoteSyncEnabled])
+  }, [isRemoteSyncEnabled, view])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isRemoteSyncEnabled) {
@@ -544,15 +583,26 @@ function useJeopardyGame() {
         }
 
         const normalized = normalizeBoardLibrary(payload.data)
+        const normalizedSerialized = JSON.stringify(normalized)
+        if (normalizedSerialized === lastSyncedBoardLibraryRef.current) {
+          return
+        }
+
         applyingRemoteBoardsRef.current = true
-        lastSyncedBoardLibraryRef.current = JSON.stringify(normalized)
+        lastSyncedBoardLibraryRef.current = normalizedSerialized
         setBoardCatalog(normalized.boardCatalog)
         setBoardCategoriesById(normalized.boardCategoriesById)
+        setActiveBoardId((currentBoardId) => {
+          if (normalized.boardCategoriesById[currentBoardId]) {
+            return currentBoardId
+          }
 
-        if (!normalized.boardCategoriesById[activeBoardId]) {
-          const fallbackId = normalized.boardCatalog[0]?.id || 'board-1'
-          setActiveBoardId(fallbackId)
-        }
+          if (view === 'editor') {
+            return currentBoardId
+          }
+
+          return normalized.boardCatalog[0]?.id || 'board-1'
+        })
       } catch {
         // Ignore malformed board library stream payloads.
       } finally {
@@ -568,7 +618,7 @@ function useJeopardyGame() {
       source.removeEventListener('put', handlePut)
       source.close()
     }
-  }, [isRemoteSyncEnabled, activeBoardId])
+  }, [isRemoteSyncEnabled, view])
 
   useEffect(() => {
     const base = boardCategoriesById[activeBoardId] || cloneDefaultCategories()
@@ -577,6 +627,10 @@ function useJeopardyGame() {
 
   useEffect(() => {
     if (!isRemoteSyncEnabled) {
+      return
+    }
+
+    if (view === 'editor') {
       return
     }
 
@@ -622,33 +676,7 @@ function useJeopardyGame() {
           lastError: error?.message || 'gameState write failed',
         }))
       })
-  }, [isRemoteSyncEnabled, remoteGameState])
-
-  useEffect(() => {
-    if (!isRemoteSyncEnabled || view !== 'editor') {
-      return
-    }
-
-    const serialized = JSON.stringify(remoteBoardLibrary)
-
-    if (applyingRemoteBoardsRef.current) {
-      lastSyncedBoardLibraryRef.current = serialized
-      return
-    }
-
-    if (lastSyncedBoardLibraryRef.current === serialized) {
-      return
-    }
-
-    lastSyncedBoardLibraryRef.current = serialized
-
-    const writeUrl = `${FIREBASE_DB_URL}/boards/library.json`
-    fetch(writeUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: serialized,
-    }).catch(() => {})
-  }, [isRemoteSyncEnabled, view, remoteBoardLibrary])
+  }, [isRemoteSyncEnabled, remoteGameState, view])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isRemoteSyncEnabled) {
@@ -797,7 +825,8 @@ function useJeopardyGame() {
     })
   }
 
-  function saveEditorChanges(updatedCat) {
+  function saveEditorChanges(updatedCat, options = {}) {
+    const { persistRemote = false } = options
     const sanitizedCat = {
       ...updatedCat,
       name: sanitizePlainText(updatedCat.name, 60),
@@ -815,10 +844,18 @@ function useJeopardyGame() {
       idx === editingCat ? sanitizedCat : cat,
     )
 
-    setBoardCategoriesById((prev) => ({
-      ...prev,
+    const nextBoardMap = {
+      ...boardCategoriesById,
       [activeBoardId]: nextBoard,
-    }))
+    }
+
+    setBoardCategoriesById(nextBoardMap)
+    setCategories(applyUsedMapToCategories(nextBoard, roomUsedMap))
+
+    if (persistRemote) {
+      writeRemoteBoardLibrary(buildRemoteBoardLibraryPayload(boardCatalog, nextBoardMap))
+    }
+
     editorSavedFlag.trigger()
   }
 
@@ -829,27 +866,45 @@ function useJeopardyGame() {
 
     const nextMap = {
       ...boardCategoriesById,
-      [activeBoardId]: clearUsedFlags(categories),
+      [activeBoardId]: boardCategoriesById[activeBoardId] || clearUsedFlags(categories),
     }
 
-    const target = nextMap[boardId] || cloneDefaultCategories()
     setBoardCategoriesById(nextMap)
     setActiveBoardId(boardId)
     setEditingCat(0)
   }
 
-  function addBoard() {
+  function addBoard(currentDraftCat) {
     const nextId = `board-${Date.now().toString(36)}`
     const nextName = `Board ${boardCatalog.length + 1}`
     const nextCategories = cloneDefaultCategories()
 
+    const sanitizedDraftCat = currentDraftCat
+      ? {
+          ...currentDraftCat,
+          name: sanitizePlainText(currentDraftCat.name, 60),
+          clues: currentDraftCat.clues.map((clue) => ({
+            ...clue,
+            answer: sanitizePlainText(clue.answer, 240),
+            question: sanitizePlainText(clue.question, 240),
+            mediaUrl: sanitizeYouTubeUrl(clue.mediaUrl || ''),
+            used: false,
+          })),
+        }
+      : null
+
+    const currentBoard = (boardCategoriesById[activeBoardId] || clearUsedFlags(categories)).map(
+      (cat, idx) => (idx === editingCat && sanitizedDraftCat ? sanitizedDraftCat : cat),
+    )
+
     const nextMap = {
       ...boardCategoriesById,
-      [activeBoardId]: clearUsedFlags(categories),
+      [activeBoardId]: currentBoard,
       [nextId]: nextCategories,
     }
 
-    setBoardCatalog((prev) => [...prev, { id: nextId, name: nextName }])
+    const nextCatalog = [...boardCatalog, { id: nextId, name: nextName }]
+    setBoardCatalog(nextCatalog)
     setBoardCategoriesById(nextMap)
     setActiveBoardId(nextId)
     setRoomUsedMap(buildEmptyUsedMap())
