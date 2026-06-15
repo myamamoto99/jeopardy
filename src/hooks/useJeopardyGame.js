@@ -329,6 +329,7 @@ function useJeopardyGame() {
   const applyingRemoteGameRef = useRef(false)
   const lastSyncedGameStateRef = useRef('')
   const gameStateSnapshotRef = useRef(null)
+  const buzzersSnapshotRef = useRef({})
   const applyingRemoteBoardsRef = useRef(false)
   const lastSyncedBoardLibraryRef = useRef('')
   const didHydrateLocalCategoriesRef = useRef(false)
@@ -397,6 +398,10 @@ function useJeopardyGame() {
   useEffect(() => {
     gameStateSnapshotRef.current = remoteGameState
   }, [remoteGameState])
+
+  useEffect(() => {
+    buzzersSnapshotRef.current = buzzers
+  }, [buzzers])
 
   const remoteBoardLibrary = useMemo(
     () => buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById),
@@ -751,64 +756,18 @@ function useJeopardyGame() {
       try {
         const payload = JSON.parse(eventData)
         const path = payload?.path
-
-        if (path === '/') {
-          setBuzzers(normalizeBuzzers(payload.data))
+        if (!path) {
           return
         }
 
-        if (!path || !path.startsWith('/')) {
-          return
-        }
-
-        const segments = path.slice(1).split('/').filter(Boolean)
-        const buzzerId = segments[0]
-        if (!buzzerId) {
-          return
-        }
-
-        setBuzzers((prev) => {
-          const next = { ...prev }
-
-          if (segments.length === 1) {
-            if (payload.data === null) {
-              delete next[buzzerId]
-            } else {
-              const normalized = normalizeBuzzers({ [buzzerId]: payload.data })
-              if (normalized[buzzerId]) {
-                next[buzzerId] = normalized[buzzerId]
-              }
-            }
-            return next
-          }
-
-          const field = segments[1]
-          if (!next[buzzerId]) {
-            next[buzzerId] = {
-              teamIndex: 0,
-              buzzedIn: false,
-              buzzTime: null,
-            }
-          }
-
-          if (payload.data === null) {
-            delete next[buzzerId][field]
-          } else {
-            next[buzzerId] = {
-              ...next[buzzerId],
-              [field]: payload.data,
-            }
-          }
-
-          const normalized = normalizeBuzzers({ [buzzerId]: next[buzzerId] })
-          if (normalized[buzzerId]) {
-            next[buzzerId] = normalized[buzzerId]
-          } else {
-            delete next[buzzerId]
-          }
-
-          return next
-        })
+        const nextRaw = applyFirebasePathUpdate(
+          buzzersSnapshotRef.current || {},
+          path,
+          payload.data,
+        )
+        const normalized = normalizeBuzzers(nextRaw)
+        buzzersSnapshotRef.current = normalized
+        setBuzzers(normalized)
       } catch {
         // Ignore malformed stream event payloads.
       }
@@ -836,11 +795,14 @@ function useJeopardyGame() {
       return
     }
 
+    const normalized = normalizeBuzzers(nextBuzzers)
+    buzzersSnapshotRef.current = normalized
+
     const writeUrl = `${FIREBASE_DB_URL}/players.json`
     fetch(writeUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(nextBuzzers),
+      body: JSON.stringify(normalized),
     })
       .then((response) => {
         if (!response.ok) {
@@ -869,6 +831,21 @@ function useJeopardyGame() {
     }
 
     const writeUrl = `${FIREBASE_DB_URL}/players/${encodeURIComponent(playerId)}.json`
+
+    if (value === null) {
+      const next = { ...(buzzersSnapshotRef.current || {}) }
+      delete next[playerId]
+      buzzersSnapshotRef.current = next
+    } else {
+      const normalized = normalizeBuzzers({ [playerId]: value })
+      if (normalized[playerId]) {
+        buzzersSnapshotRef.current = {
+          ...(buzzersSnapshotRef.current || {}),
+          [playerId]: normalized[playerId],
+        }
+      }
+    }
+
     fetch(writeUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -891,41 +868,6 @@ function useJeopardyGame() {
           ...prev,
           lastWrite: 'error',
           lastError: error?.message || 'player write failed',
-        }))
-      })
-  }
-
-  function resetAllBuzzersRemote() {
-    if (!isRemoteSyncEnabled) {
-      return
-    }
-
-    const readUrl = `${FIREBASE_DB_URL}/players.json`
-    fetch(readUrl)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(formatFirebaseHttpError('players read', response.status))
-        }
-        return response.json()
-      })
-      .then((raw) => {
-        const normalized = normalizeBuzzers(raw)
-        const updated = Object.entries(normalized).reduce((acc, [id, buzzer]) => {
-          acc[id] = {
-            ...buzzer,
-            buzzedIn: false,
-            buzzTime: null,
-          }
-          return acc
-        }, {})
-
-        writeRemoteBuzzers(updated)
-      })
-      .catch((error) => {
-        setFirebaseStatus((prev) => ({
-          ...prev,
-          lastWrite: 'error',
-          lastError: error?.message || 'players read failed',
         }))
       })
   }
@@ -1161,19 +1103,18 @@ function useJeopardyGame() {
   }
 
   function resetAllBuzzers() {
-    setBuzzers((prev) => {
-      const updated = {}
-      Object.keys(prev).forEach((id) => {
-        updated[id] = {
-          ...prev[id],
-          buzzedIn: false,
-          buzzTime: null,
-        }
-      })
-      return updated
+    const source = normalizeBuzzers(buzzersSnapshotRef.current || buzzers)
+    const updated = {}
+    Object.keys(source).forEach((id) => {
+      updated[id] = {
+        ...source[id],
+        buzzedIn: false,
+        buzzTime: null,
+      }
     })
 
-    resetAllBuzzersRemote()
+    setBuzzers(updated)
+    writeRemoteBuzzers(updated)
   }
 
   function disconnectPlayer() {
@@ -1194,6 +1135,7 @@ function useJeopardyGame() {
     setHomeBoardReveal(false)
     setBoardReady(false)
     setBuzzers({})
+    buzzersSnapshotRef.current = {}
     setConnectedPlayerId(null)
     setScores({})
     setRoomUsedMap(buildEmptyUsedMap())
@@ -1214,11 +1156,11 @@ function useJeopardyGame() {
         body: JSON.stringify({}),
       }),
     ])
-        .then(([gameRes, playersRes]) => {
-          if (!gameRes.ok || !playersRes.ok) {
-            const failedStatus = [gameRes.status, playersRes.status].find(
-              (status) => status >= 400,
-            )
+      .then(([gameRes, playersRes]) => {
+        if (!gameRes.ok || !playersRes.ok) {
+          const failedStatus = [gameRes.status, playersRes.status].find(
+            (status) => status >= 400,
+          )
           throw new Error(formatFirebaseHttpError('clear realtime data', failedStatus || 500))
         }
 
