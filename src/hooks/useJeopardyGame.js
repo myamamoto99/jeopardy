@@ -18,6 +18,15 @@ function formatFirebaseHttpError(operation, status) {
   return `${operation} failed (${status})`
 }
 
+function createFirebaseSafeId(prefix) {
+  const randomPart =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID().replace(/-/g, '')
+      : Math.random().toString(36).slice(2)
+
+  return `${prefix}_${Date.now().toString(36)}_${randomPart}`
+}
+
 function buildEmptyUsedMap() {
   return DEFAULT_CATEGORIES.map((cat) => cat.clues.map(() => false))
 }
@@ -900,7 +909,7 @@ function useJeopardyGame() {
   }
 
   function connectPlayer(teamIndex) {
-    const playerId = `player_${Date.now()}_${Math.random()}`
+    const playerId = createFirebaseSafeId('player')
     setConnectedPlayerId(playerId)
     setBuzzers((prev) => {
       const next = {
