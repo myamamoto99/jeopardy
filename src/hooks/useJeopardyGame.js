@@ -294,9 +294,38 @@ function buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById) {
   }
 }
 
-function applyFirebasePathUpdate(baseValue, path, data) {
-  if (path === '/' || !path) {
+function applyFirebasePathUpdate(baseValue, path, data, mergeRoot = false) {
+  if (!path) {
     return data
+  }
+
+  if (path === '/') {
+    if (!mergeRoot) {
+      return data
+    }
+
+    if (data === null) {
+      return {}
+    }
+
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return data
+    }
+
+    const next =
+      baseValue && typeof baseValue === 'object' && !Array.isArray(baseValue)
+        ? JSON.parse(JSON.stringify(baseValue))
+        : {}
+
+    Object.entries(data).forEach(([key, value]) => {
+      if (value === null) {
+        delete next[key]
+      } else {
+        next[key] = value
+      }
+    })
+
+    return next
   }
 
   const segments = path.replace(/^\//, '').split('/').filter(Boolean)
@@ -550,7 +579,7 @@ function useJeopardyGame() {
       }))
     }
 
-    const applyEventData = (eventData) => {
+    const applyEventData = (eventData, mergeRoot = false) => {
       try {
         const payload = JSON.parse(eventData)
         if (!payload?.path) {
@@ -561,6 +590,7 @@ function useJeopardyGame() {
           gameStateSnapshotRef.current || remoteGameState,
           payload.path,
           payload.data,
+          mergeRoot,
         )
         const normalized = normalizeRemoteGameState(nextRawState)
         if (!normalized) {
@@ -598,8 +628,8 @@ function useJeopardyGame() {
       }
     }
 
-    const handlePut = (event) => applyEventData(event.data)
-    const handlePatch = (event) => applyEventData(event.data)
+    const handlePut = (event) => applyEventData(event.data, false)
+    const handlePatch = (event) => applyEventData(event.data, true)
 
     source.addEventListener('put', handlePut)
     source.addEventListener('patch', handlePatch)
@@ -752,7 +782,7 @@ function useJeopardyGame() {
       }))
     }
 
-    const applyEventData = (eventData) => {
+    const applyEventData = (eventData, mergeRoot = false) => {
       try {
         const payload = JSON.parse(eventData)
         const path = payload?.path
@@ -764,6 +794,7 @@ function useJeopardyGame() {
           buzzersSnapshotRef.current || {},
           path,
           payload.data,
+          mergeRoot,
         )
         const normalized = normalizeBuzzers(nextRaw)
         buzzersSnapshotRef.current = normalized
@@ -773,8 +804,8 @@ function useJeopardyGame() {
       }
     }
 
-    const handlePut = (event) => applyEventData(event.data)
-    const handlePatch = (event) => applyEventData(event.data)
+    const handlePut = (event) => applyEventData(event.data, false)
+    const handlePatch = (event) => applyEventData(event.data, true)
 
     source.addEventListener('put', handlePut)
     source.addEventListener('patch', handlePatch)
