@@ -1094,11 +1094,12 @@ function useJeopardyGame() {
         buzzedIn: false,
         buzzTime: null,
       }
-      writeRemoteSingleBuzzer(playerId, nextValue)
-      return {
+      const updated = {
         ...prev,
         [playerId]: nextValue,
       }
+      writeRemoteBuzzers(updated)
+      return updated
     })
   }
 
@@ -1121,7 +1122,7 @@ function useJeopardyGame() {
     setBuzzers((prev) => {
       const updated = { ...prev }
       delete updated[connectedPlayerId]
-      writeRemoteSingleBuzzer(connectedPlayerId, null)
+      writeRemoteBuzzers(updated)
       return updated
     })
     setConnectedPlayerId(null)
