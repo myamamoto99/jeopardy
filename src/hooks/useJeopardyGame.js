@@ -197,7 +197,7 @@ function normalizeScores(raw) {
 }
 
 function normalizePlayers(raw) {
-  const fallback = ['Team 1', 'Team 2', 'Team 3']
+  const fallback = ['Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5']
   if (!Array.isArray(raw)) {
     return fallback
   }
@@ -407,7 +407,7 @@ function useJeopardyGame() {
   const [activeBoardId, setActiveBoardId] = useState('board-1')
   const [roomUsedMap, setRoomUsedMap] = useState(buildEmptyUsedMap)
   const [scores, setScores] = useState({})
-  const [players, setPlayers] = useState(['Team 1', 'Team 2', 'Team 3'])
+  const [players, setPlayers] = useState(['Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5'])
   const [activeClue, setActiveClue] = useState(null)
   const [hostClueState, setHostClueState] = useState('hidden')
   const [editingCat, setEditingCat] = useState(0)
