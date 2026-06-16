@@ -42,6 +42,8 @@ function App({ initialView }) {
       markActiveClueUsedAndReturn,
       updateScore,
       setPlayerName,
+      addPlayer,
+      removePlayer,
       saveEditorChanges,
       savePlayers,
       openHostSelection,
@@ -159,6 +161,8 @@ function App({ initialView }) {
           scores={scores}
           onHome={() => setView('home')}
           onSetPlayerName={setPlayerName}
+          onAddPlayer={addPlayer}
+          onRemovePlayer={removePlayer}
           onSavePlayers={savePlayers}
           onResetScores={() => {
             if (window.confirm('Reset all scores to $0?')) {

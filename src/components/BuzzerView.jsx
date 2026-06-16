@@ -1,4 +1,12 @@
+import { useEffect } from 'react'
+
 function BuzzerView({ players, connectedPlayerId, buzzers, onBuzzIn, onDisconnect }) {
+  useEffect(() => {
+    if (!navigator.wakeLock) return
+    let wakeLock = null
+    navigator.wakeLock.request('screen').then((lock) => { wakeLock = lock }).catch(() => {})
+    return () => { wakeLock?.release() }
+  }, [])
   const playerBuzzer = buzzers[connectedPlayerId]
   if (!playerBuzzer) {
     return <div>Loading...</div>

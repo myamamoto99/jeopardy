@@ -30,14 +30,6 @@ const CATEGORY_COUNT = DEFAULT_CATEGORIES.length
 const CLUE_COUNT = DEFAULT_CATEGORIES[0]?.clues?.length || 5
 
 
-function createFirebaseSafeId(prefix) {
-  const randomPart =
-    typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID().replace(/-/g, '')
-      : Math.random().toString(36).slice(2)
-
-  return `${prefix}_${Date.now().toString(36)}_${randomPart}`
-}
 
 function buildEmptyUsedMap() {
   return DEFAULT_CATEGORIES.map((cat) => cat.clues.map(() => false))
@@ -955,6 +947,20 @@ function useJeopardyGame() {
     })
   }
 
+  function addPlayer() {
+    setPlayers((prev) => {
+      if (prev.length >= 8) return prev
+      return [...prev, `Team ${prev.length + 1}`]
+    })
+  }
+
+  function removePlayer(index) {
+    setPlayers((prev) => {
+      if (prev.length <= 1) return prev
+      return prev.filter((_, i) => i !== index)
+    })
+  }
+
   function saveEditorChanges(updatedCat, options = {}) {
     const { persistRemote = false } = options
     const sanitizedCat = {
@@ -1089,19 +1095,13 @@ function useJeopardyGame() {
   }
 
   function connectPlayer(teamIndex) {
-    const playerId = createFirebaseSafeId('player')
-    setConnectedPlayerId(playerId)
+    const teamId = `team_${teamIndex}`
+    setConnectedPlayerId(teamId)
     setBuzzers((prev) => {
-      const value = {
-        teamIndex,
-        buzzedIn: false,
-        buzzTime: null,
-      }
-      writeRemoteSingleBuzzer(playerId, value)
-      return {
-        ...prev,
-        [playerId]: value,
-      }
+      if (prev[teamId]) return prev
+      const value = { teamIndex, buzzedIn: false, buzzTime: null }
+      writeRemoteSingleBuzzer(teamId, value)
+      return { ...prev, [teamId]: value }
     })
     setView('buzzer')
   }
@@ -1154,12 +1154,6 @@ function useJeopardyGame() {
   }
 
   function disconnectPlayer() {
-    setBuzzers((prev) => {
-      const updated = { ...prev }
-      delete updated[connectedPlayerId]
-      writeRemoteBuzzers(updated)
-      return updated
-    })
     setConnectedPlayerId(null)
     setView('home')
   }
@@ -1228,6 +1222,8 @@ function useJeopardyGame() {
       markActiveClueUsedAndReturn,
       updateScore,
       setPlayerName,
+      addPlayer,
+      removePlayer,
       saveEditorChanges,
       savePlayers,
       openHostSelection,

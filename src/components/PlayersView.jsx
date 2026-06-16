@@ -1,4 +1,4 @@
-function PlayersView({ players, scores, onHome, onSetPlayerName, onSavePlayers, onResetScores, playersSaved }) {
+function PlayersView({ players, scores, onHome, onSetPlayerName, onAddPlayer, onRemovePlayer, onSavePlayers, onResetScores, playersSaved }) {
   return (
     <div className="page panel-page">
       <div className="topbar">
@@ -17,8 +17,21 @@ function PlayersView({ players, scores, onHome, onSetPlayerName, onSavePlayers, 
             placeholder="Name or team"
           />
           <div className="score-value">${(scores[name] || 0).toLocaleString()}</div>
+          <button
+            className="btn btn-outline"
+            onClick={() => onRemovePlayer(idx)}
+            disabled={players.length <= 1}
+          >
+            ✕
+          </button>
         </div>
       ))}
+
+      {players.length < 8 && (
+        <button className="btn btn-outline" style={{ marginTop: '10px', width: '100%' }} onClick={onAddPlayer}>
+          + Add Player
+        </button>
+      )}
 
       <div className="action-row">
         <button className="btn btn-gold" onClick={onSavePlayers}>
