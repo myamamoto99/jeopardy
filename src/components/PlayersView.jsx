@@ -8,15 +8,15 @@ function PlayersView({ players, scores, onHome, onSetPlayerName, onSavePlayers, 
         <h2>Manage Players</h2>
         <div />
       </div>
-      {[0, 1, 2].map((idx) => (
+      {players.map((name, idx) => (
         <div className="player-row" key={`player-input-${idx}`}>
           <div className="player-label">Player {idx + 1}</div>
           <input
-            value={players[idx]}
+            value={name}
             onChange={(e) => onSetPlayerName(idx, e.target.value)}
             placeholder="Name or team"
           />
-          <div className="score-value">${(scores[players[idx]] || 0).toLocaleString()}</div>
+          <div className="score-value">${(scores[name] || 0).toLocaleString()}</div>
         </div>
       ))}
 
