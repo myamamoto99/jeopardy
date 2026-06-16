@@ -6,6 +6,9 @@ import { buildYouTubeEmbedUrl } from '../utils/youtube'
 function HostView({
   isRemoteSyncEnabled,
   firebaseStatus,
+  boardCatalog,
+  activeBoardId,
+  onSelectGameBoard,
   categories,
   hostSelection,
   activePlayers,
@@ -51,9 +54,20 @@ function HostView({
         <span className="host-badge">HOST ONLY</span>
       </div>
 
-      <div className="info-panel">
-        Click a clue to control what appears on the player screen, then award points
-        below.
+      <div className="info-panel" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <span>Active board:</span>
+        <select
+          className="board-select"
+          value={activeBoardId}
+          onChange={(e) => onSelectGameBoard(e.target.value)}
+        >
+          {boardCatalog.map((board) => (
+            <option key={board.id} value={board.id}>
+              {board.name}
+            </option>
+          ))}
+        </select>
+        <span style={{ color: '#7a90b8', fontSize: '12px' }}>Click a clue to control the player screen.</span>
       </div>
 
       {isRemoteSyncEnabled && (

@@ -6,7 +6,7 @@ import { isSafeImageUrl, sanitizeImageUrl } from '../utils/image'
 
 function EditorView({
   boardCatalog,
-  activeBoardId,
+  editorBoardId,
   categories,
   editingCat,
   setEditingCat,
@@ -17,17 +17,16 @@ function EditorView({
   onSave,
   showSaved,
 }) {
+  const boardSelected = editorBoardId !== null
   const cat = categories[editingCat]
-  const activeBoard =
-    boardCatalog.find((board) => board.id === activeBoardId) || boardCatalog[0]
-  const [boardSelected, setBoardSelected] = useState(false)
+  const activeBoard = boardCatalog.find((board) => board.id === editorBoardId) || null
   const [draftBoardName, setDraftBoardName] = useState(activeBoard?.name || '')
   const [draftName, setDraftName] = useState(cat.name)
   const [draftClues, setDraftClues] = useState(cat.clues)
 
   useEffect(() => {
     setDraftBoardName(activeBoard?.name || '')
-  }, [activeBoardId, activeBoard?.name])
+  }, [editorBoardId, activeBoard?.name])
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -85,10 +84,9 @@ function EditorView({
         <div className="action-row">
           <select
             className="board-select"
-            value={boardSelected ? activeBoardId : ''}
+            value={editorBoardId || ''}
             onChange={(e) => {
               if (boardSelected) commitDraft()
-              setBoardSelected(true)
               onSelectBoard(e.target.value)
             }}
           >
@@ -105,10 +103,7 @@ function EditorView({
           </select>
           <button
             className="btn btn-outline"
-            onClick={() => {
-              onAddBoard(boardSelected ? buildDraftCategory() : null)
-              setBoardSelected(true)
-            }}
+            onClick={() => onAddBoard(boardSelected ? buildDraftCategory() : null)}
           >
             Add Board
           </button>

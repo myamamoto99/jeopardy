@@ -18,6 +18,7 @@ function App({ initialView }) {
       firebaseStatus,
       boardCatalog,
       activeBoardId,
+      editorBoardId,
       categories,
       scores,
       players,
@@ -30,7 +31,7 @@ function App({ initialView }) {
       connectedPlayerId,
       buzzers,
     },
-    derived: { activePlayers, editorSaved, playersSaved },
+    derived: { activePlayers, editorCategories, editorSaved, playersSaved },
     actions: {
       setView,
       setEditingCat,
@@ -51,6 +52,7 @@ function App({ initialView }) {
       resetScores,
       clearRealtimeGameData,
       selectBoard,
+      selectGameBoard,
       addBoard,
       renameBoard,
       connectPlayer,
@@ -96,6 +98,9 @@ function App({ initialView }) {
         <HostView
           isRemoteSyncEnabled={isRemoteSyncEnabled}
           firebaseStatus={firebaseStatus}
+          boardCatalog={boardCatalog}
+          activeBoardId={activeBoardId}
+          onSelectGameBoard={selectGameBoard}
           categories={categories}
           hostSelection={hostSelection}
           activePlayers={activePlayers}
@@ -142,8 +147,8 @@ function App({ initialView }) {
       {view === 'editor' && (
         <EditorView
           boardCatalog={boardCatalog}
-          activeBoardId={activeBoardId}
-          categories={categories}
+          editorBoardId={editorBoardId}
+          categories={editorCategories}
           editingCat={editingCat}
           setEditingCat={setEditingCat}
           onSelectBoard={selectBoard}

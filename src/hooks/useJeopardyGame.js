@@ -397,6 +397,7 @@ function useJeopardyGame() {
     'board-1': cloneDefaultCategories(),
   }))
   const [activeBoardId, setActiveBoardId] = useState('board-1')
+  const [editorBoardId, setEditorBoardId] = useState(null)
   const [roomUsedMap, setRoomUsedMap] = useState(buildEmptyUsedMap)
   const [scores, setScores] = useState({})
   const [players, setPlayers] = useState(['Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5', 'Team 6'])
@@ -424,6 +425,11 @@ function useJeopardyGame() {
   const activePlayers = useMemo(
     () => players.map((name, idx) => name || `Team ${idx + 1}`),
     [players],
+  )
+
+  const editorCategories = useMemo(
+    () => (editorBoardId ? boardCategoriesById[editorBoardId] : null) || cloneDefaultCategories(),
+    [boardCategoriesById, editorBoardId],
   )
 
   const remoteGameState = useMemo(
@@ -700,15 +706,13 @@ function useJeopardyGame() {
         setBoardCatalog(normalized.boardCatalog)
         setBoardCategoriesById(normalized.boardCategoriesById)
         setActiveBoardId((currentBoardId) => {
-          if (normalized.boardCategoriesById[currentBoardId]) {
-            return currentBoardId
-          }
-
-          if (viewRef.current === 'editor') {
-            return currentBoardId
-          }
-
+          if (normalized.boardCategoriesById[currentBoardId]) return currentBoardId
           return normalized.boardCatalog[0]?.id || 'board-1'
+        })
+        setEditorBoardId((currentEditorBoardId) => {
+          if (!currentEditorBoardId) return null
+          if (normalized.boardCategoriesById[currentEditorBoardId]) return currentEditorBoardId
+          return null
         })
       } catch {
         // Ignore malformed board library stream payloads.
@@ -976,18 +980,17 @@ function useJeopardyGame() {
       })),
     }
 
-    const baseBoard = boardCategoriesById[activeBoardId] || clearUsedFlags(categories)
+    const baseBoard = boardCategoriesById[editorBoardId] || cloneDefaultCategories()
     const nextBoard = baseBoard.map((cat, idx) =>
       idx === editingCat ? sanitizedCat : cat,
     )
 
     const nextBoardMap = {
       ...boardCategoriesById,
-      [activeBoardId]: nextBoard,
+      [editorBoardId]: nextBoard,
     }
 
     setBoardCategoriesById(nextBoardMap)
-    setCategories(applyUsedMapToCategories(nextBoard, roomUsedMap))
 
     if (persistRemote) {
       writeRemoteBoardLibrary(buildRemoteBoardLibraryPayload(boardCatalog, nextBoardMap))
@@ -997,18 +1000,15 @@ function useJeopardyGame() {
   }
 
   function selectBoard(boardId) {
-    if (!boardId || boardId === activeBoardId) {
-      return
-    }
-
-    const nextMap = {
-      ...boardCategoriesById,
-      [activeBoardId]: boardCategoriesById[activeBoardId] || clearUsedFlags(categories),
-    }
-
-    setBoardCategoriesById(nextMap)
-    setActiveBoardId(boardId)
+    if (!boardId || boardId === editorBoardId) return
+    setEditorBoardId(boardId)
     setEditingCat(0)
+  }
+
+  function selectGameBoard(boardId) {
+    if (!boardId || boardId === activeBoardId) return
+    setActiveBoardId(boardId)
+    setRoomUsedMap(buildEmptyUsedMap())
   }
 
   function addBoard(currentDraftCat) {
@@ -1031,24 +1031,23 @@ function useJeopardyGame() {
         }
       : null
 
-    const currentBoard = (boardCategoriesById[activeBoardId] || clearUsedFlags(categories)).map(
-      (cat, idx) => (idx === editingCat && sanitizedDraftCat ? sanitizedDraftCat : cat),
-    )
+    const currentEditorBoard = editorBoardId
+      ? (boardCategoriesById[editorBoardId] || cloneDefaultCategories()).map(
+          (cat, idx) => (idx === editingCat && sanitizedDraftCat ? sanitizedDraftCat : cat),
+        )
+      : null
 
     const nextMap = {
       ...boardCategoriesById,
-      [activeBoardId]: currentBoard,
+      ...(currentEditorBoard && editorBoardId ? { [editorBoardId]: currentEditorBoard } : {}),
       [nextId]: nextCategories,
     }
 
     const nextCatalog = [...boardCatalog, { id: nextId, name: nextName }]
     setBoardCatalog(nextCatalog)
     setBoardCategoriesById(nextMap)
-    setActiveBoardId(nextId)
-    setRoomUsedMap(buildEmptyUsedMap())
+    setEditorBoardId(nextId)
     setEditingCat(0)
-    closeBoardClue()
-    setBoardReady(false)
   }
 
   function renameBoard(boardId, nextName) {
@@ -1194,6 +1193,7 @@ function useJeopardyGame() {
       firebaseStatus,
       boardCatalog,
       activeBoardId,
+      editorBoardId,
       categories,
       scores,
       players,
@@ -1208,6 +1208,7 @@ function useJeopardyGame() {
     },
     derived: {
       activePlayers,
+      editorCategories,
       editorSaved: editorSavedFlag.isActive,
       playersSaved: playersSavedFlag.isActive,
     },
@@ -1231,6 +1232,7 @@ function useJeopardyGame() {
       resetScores,
       clearRealtimeGameData,
       selectBoard,
+      selectGameBoard,
       addBoard,
       renameBoard,
       connectPlayer,
