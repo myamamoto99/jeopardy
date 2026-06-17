@@ -29,10 +29,12 @@ function App({ initialView }) {
       homeBoardReveal,
       boardReady,
       dailyDoublePositions,
+      finalJeopardyState,
+      finalJeopardyWagers,
       connectedPlayerId,
       buzzers,
     },
-    derived: { activePlayers, editorCategories, editorSaved, playersSaved },
+    derived: { activePlayers, editorCategories, editorFinalJeopardy, finalJeopardy, editorSaved, playersSaved },
     actions: {
       setView,
       setEditingCat,
@@ -47,10 +49,16 @@ function App({ initialView }) {
       addPlayer,
       removePlayer,
       saveEditorChanges,
+      saveFinalJeopardy,
       savePlayers,
       openHostSelection,
       sendSelectionToPlayer,
       showDailyDoubleOnPlayer,
+      startFinalJeopardy,
+      revealFinalClue,
+      revealFinalAnswer,
+      endFinalJeopardy,
+      submitFinalWager,
       resetScores,
       clearRealtimeGameData,
       selectBoard,
@@ -112,6 +120,9 @@ function App({ initialView }) {
           buzzers={buzzers}
           boardReady={boardReady}
           dailyDoublePositions={dailyDoublePositions}
+          finalJeopardy={finalJeopardy}
+          finalJeopardyState={finalJeopardyState}
+          finalJeopardyWagers={finalJeopardyWagers}
           onHome={() => setView('home')}
           onSelectClue={openHostSelection}
           onShowDailyDouble={showDailyDoubleOnPlayer}
@@ -133,6 +144,10 @@ function App({ initialView }) {
             setBoardReady(false)
           }}
           onRevealBoard={() => setBoardReady(true)}
+          onStartFinalJeopardy={startFinalJeopardy}
+          onRevealFinalClue={revealFinalClue}
+          onRevealFinalAnswer={revealFinalAnswer}
+          onEndFinalJeopardy={endFinalJeopardy}
         />
       )}
 
@@ -144,6 +159,8 @@ function App({ initialView }) {
           activePlayers={activePlayers}
           scores={scores}
           boardReady={boardReady}
+          finalJeopardy={finalJeopardy}
+          finalJeopardyState={finalJeopardyState}
           onHome={() => setView('home')}
           onHost={() => setView('host')}
         />
@@ -154,6 +171,7 @@ function App({ initialView }) {
           boardCatalog={boardCatalog}
           editorBoardId={editorBoardId}
           categories={editorCategories}
+          finalJeopardy={editorFinalJeopardy}
           editingCat={editingCat}
           setEditingCat={setEditingCat}
           onSelectBoard={selectBoard}
@@ -161,6 +179,7 @@ function App({ initialView }) {
           onRenameBoard={renameBoard}
           onHome={() => setView('home')}
           onSave={saveEditorChanges}
+          onSaveFinalJeopardy={(data, opts) => saveFinalJeopardy(editorBoardId, data, opts)}
           showSaved={editorSaved}
         />
       )}
@@ -196,7 +215,11 @@ function App({ initialView }) {
           players={players}
           connectedPlayerId={connectedPlayerId}
           buzzers={buzzers}
+          finalJeopardy={finalJeopardy}
+          finalJeopardyState={finalJeopardyState}
+          finalJeopardyWagers={finalJeopardyWagers}
           onBuzzIn={buzzIn}
+          onSubmitFinalWager={submitFinalWager}
           onDisconnect={disconnectPlayer}
         />
       )}

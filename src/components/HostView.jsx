@@ -17,6 +17,9 @@ function HostView({
   buzzers,
   boardReady,
   dailyDoublePositions,
+  finalJeopardy,
+  finalJeopardyState,
+  finalJeopardyWagers,
   onHome,
   onSelectClue,
   onShowDailyDouble,
@@ -30,11 +33,19 @@ function HostView({
   onClearRealtimeData,
   onShowJoinLobby,
   onRevealBoard,
+  onStartFinalJeopardy,
+  onRevealFinalClue,
+  onRevealFinalAnswer,
+  onEndFinalJeopardy,
 }) {
   const [playNonce, setPlayNonce] = useState(0)
   const [wager, setWager] = useState('1000')
   const [wagerPlayerIdx, setWagerPlayerIdx] = useState(0)
   const [ddSoundNonce, setDdSoundNonce] = useState(0)
+  const [fjPlayNonce, setFjPlayNonce] = useState(0)
+  const [fjTimerSeconds, setFjTimerSeconds] = useState(null)
+  const [fjTimerPending, setFjTimerPending] = useState(false)
+  const [fjTimerSoundNonce, setFjTimerSoundNonce] = useState(0)
 
   const selectedClue = hostSelection
     ? categories[hostSelection.ci].clues[hostSelection.vi]
@@ -51,12 +62,29 @@ function HostView({
     [selectedClue],
   )
 
+  const fjEmbedUrl = useMemo(
+    () => buildYouTubeEmbedUrl(finalJeopardy?.mediaUrl || ''),
+    [finalJeopardy],
+  )
+
   useEffect(() => {
     setPlayNonce(0)
     setWager('1000')
     setWagerPlayerIdx(0)
     setDdSoundNonce(0)
   }, [hostSelection?.ci, hostSelection?.vi])
+
+  useEffect(() => {
+    setFjPlayNonce(0)
+    setFjTimerSeconds(null)
+    setFjTimerPending(false)
+  }, [finalJeopardyState])
+
+  useEffect(() => {
+    if (fjTimerSeconds === null || fjTimerSeconds <= 0) return
+    const id = setTimeout(() => setFjTimerSeconds((s) => s - 1), 1000)
+    return () => clearTimeout(id)
+  }, [fjTimerSeconds])
 
   return (
     <div className="page board-page">
@@ -364,6 +392,126 @@ function HostView({
           Reset All Buzzers
         </button>
       )}
+
+      <h3 className="section-label">Final Jeopardy</h3>
+      <div className="final-jeopardy-panel">
+        {!finalJeopardyState ? (
+          <>
+            <div className="small-meta" style={{ marginBottom: '10px' }}>
+              Category: <strong>{finalJeopardy?.category || 'Not set'}</strong>
+            </div>
+            <button className="btn btn-gold" onClick={onStartFinalJeopardy} disabled={!finalJeopardy?.category}>
+              Start Final Jeopardy
+            </button>
+            {!finalJeopardy?.category && (
+              <div className="small-meta" style={{ marginTop: '6px' }}>Set the category in Edit Questions first.</div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="small-meta" style={{ marginBottom: '8px' }}>
+              Category: <strong>{finalJeopardy?.category}</strong>
+              {' · '}State: <strong>{finalJeopardyState}</strong>
+            </div>
+
+            <div className="action-row" style={{ marginBottom: '12px' }}>
+              {finalJeopardyState === 'wagering' && (
+                <button className="btn btn-blue" onClick={onRevealFinalClue}>
+                  Reveal Clue
+                </button>
+              )}
+              {finalJeopardyState === 'clue' && (
+                <button className="btn btn-blue" onClick={onRevealFinalAnswer}>
+                  Reveal Answer
+                </button>
+              )}
+              <button
+                className="btn btn-blue"
+                onClick={() => setFjPlayNonce((n) => n + 1)}
+                disabled={!fjEmbedUrl}
+              >
+                Play Clip
+              </button>
+              <button
+                className="btn btn-outline"
+                onClick={() => setFjPlayNonce(0)}
+                disabled={fjPlayNonce === 0}
+              >
+                Stop Clip
+              </button>
+              <button
+                className="btn"
+                style={{ background: '#1a4a1a', borderColor: '#4a9a4a', color: '#e8edf8', minWidth: '120px' }}
+                onClick={() => {
+                  setFjTimerPending(true)
+                  setFjTimerSoundNonce((n) => n + 1)
+                  // Delay timer start slightly so audio has time to buffer
+                  setTimeout(() => {
+                    setFjTimerSeconds(30)
+                    setFjTimerPending(false)
+                  }, 1500)
+                }}
+                disabled={fjTimerPending || (fjTimerSeconds !== null && fjTimerSeconds > 0)}
+              >
+                {fjTimerSeconds === null ? 'Start Timer' : fjTimerSeconds > 0 ? `${fjTimerSeconds}s` : "Time's up!"}
+              </button>
+              <button className="btn btn-outline" onClick={onEndFinalJeopardy}>
+                End Final Jeopardy
+              </button>
+            </div>
+
+            {fjTimerSoundNonce > 0 && (
+              <iframe
+                key={fjTimerSoundNonce}
+                src="https://www.youtube.com/embed/F42y5PgxhZs?autoplay=1"
+                width="1"
+                height="1"
+                style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+                allow="autoplay"
+                title="Final Jeopardy timer music"
+              />
+            )}
+
+            {fjPlayNonce > 0 && fjEmbedUrl && (
+              <div className="clip-player" style={{ marginBottom: '12px' }}>
+                <iframe
+                  key={fjPlayNonce}
+                  src={fjEmbedUrl}
+                  title="Final Jeopardy music"
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            )}
+
+            <div className="fj-wager-list">
+              {activePlayers.map((name, idx) => {
+                const teamId = `team_${idx}`
+                const wagerAmt = finalJeopardyWagers?.[teamId] ?? null
+                return (
+                  <div key={name} className="score-pill" style={{ minWidth: '140px' }}>
+                    <div className="score-name">{name}</div>
+                    <div className="score-value">${(scores[name] || 0).toLocaleString()}</div>
+                    <div className="small-meta" style={{ marginTop: '4px' }}>
+                      Wager: {wagerAmt != null ? `$${wagerAmt.toLocaleString()}` : 'pending…'}
+                    </div>
+                    {wagerAmt != null && (
+                      <div className="mini-actions">
+                        <button onClick={() => onUpdateScore(name, wagerAmt)}>
+                          +${wagerAmt.toLocaleString()}
+                        </button>
+                        <button onClick={() => onUpdateScore(name, -wagerAmt)}>
+                          -${wagerAmt.toLocaleString()}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

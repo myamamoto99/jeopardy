@@ -8,6 +8,7 @@ function EditorView({
   boardCatalog,
   editorBoardId,
   categories,
+  finalJeopardy,
   editingCat,
   setEditingCat,
   onSelectBoard,
@@ -15,18 +16,21 @@ function EditorView({
   onRenameBoard,
   onHome,
   onSave,
+  onSaveFinalJeopardy,
   showSaved,
 }) {
   const boardSelected = editorBoardId !== null
   const cat = categories[editingCat]
   const activeBoard = boardCatalog.find((board) => board.id === editorBoardId) || null
   const [draftBoardName, setDraftBoardName] = useState(activeBoard?.name || '')
+  const [draftFJ, setDraftFJ] = useState({ ...finalJeopardy })
   const [draftName, setDraftName] = useState(cat.name)
   const [draftClues, setDraftClues] = useState(cat.clues)
 
   useEffect(() => {
     setDraftBoardName(activeBoard?.name || '')
-  }, [editorBoardId, activeBoard?.name])
+    setDraftFJ({ ...finalJeopardy })
+  }, [editorBoardId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -255,6 +259,64 @@ function EditorView({
             >
               Save Changes
             </button>
+          </div>
+
+          <div className="editor-card" style={{ marginTop: '24px', borderColor: '#f0c040' }}>
+            <div className="pts" style={{ fontSize: '14px', letterSpacing: '1px' }}>FINAL JEOPARDY</div>
+            <label>Category</label>
+            <input
+              value={draftFJ.category || ''}
+              onChange={(e) => setDraftFJ((prev) => ({ ...prev, category: e.target.value }))}
+              onBlur={(e) => setDraftFJ((prev) => ({ ...prev, category: sanitizePlainText(e.target.value, 60) }))}
+              placeholder="e.g. World History"
+            />
+            <label>Clue – what players read</label>
+            <textarea
+              rows={2}
+              value={draftFJ.clue || ''}
+              onChange={(e) => setDraftFJ((prev) => ({ ...prev, clue: e.target.value }))}
+              onBlur={(e) => setDraftFJ((prev) => ({ ...prev, clue: sanitizePlainText(e.target.value, 240) }))}
+            />
+            <label>Correct Question – host answer</label>
+            <textarea
+              rows={2}
+              value={draftFJ.question || ''}
+              onChange={(e) => setDraftFJ((prev) => ({ ...prev, question: e.target.value }))}
+              onBlur={(e) => setDraftFJ((prev) => ({ ...prev, question: sanitizePlainText(e.target.value, 240) }))}
+            />
+            <label>Music Clip Link (YouTube URL with optional start/end)</label>
+            <input
+              value={draftFJ.mediaUrl || ''}
+              onChange={(e) => setDraftFJ((prev) => ({ ...prev, mediaUrl: e.target.value }))}
+              onBlur={(e) => {
+                const sanitized = sanitizeYouTubeUrl(e.target.value)
+                if (!sanitized && e.target.value.trim()) return
+                setDraftFJ((prev) => ({ ...prev, mediaUrl: sanitized }))
+              }}
+              placeholder="https://www.youtube.com/watch?v=VIDEO_ID&t=30s"
+            />
+            {draftFJ.mediaUrl && !isSafeYouTubeUrl(draftFJ.mediaUrl) && (
+              <div className="small-meta">Invalid link. Use an https YouTube URL.</div>
+            )}
+            <label>Image Link (optional)</label>
+            <input
+              value={draftFJ.imageUrl || ''}
+              onChange={(e) => setDraftFJ((prev) => ({ ...prev, imageUrl: e.target.value }))}
+              onBlur={(e) => {
+                const sanitized = sanitizeImageUrl(e.target.value)
+                if (!sanitized && e.target.value.trim()) return
+                setDraftFJ((prev) => ({ ...prev, imageUrl: sanitized }))
+              }}
+              placeholder="https://example.com/image.jpg"
+            />
+            <div className="action-row" style={{ marginTop: '10px' }}>
+              <button
+                className="btn btn-gold"
+                onClick={() => onSaveFinalJeopardy(draftFJ, { persistRemote: true })}
+              >
+                Save Final Jeopardy
+              </button>
+            </div>
           </div>
           {hasUnsafeText && (
             <div className="small-meta">

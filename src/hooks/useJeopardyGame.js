@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { initializeApp, getApps } from 'firebase/app'
 import { getDatabase, ref as dbRef, set as dbSet } from 'firebase/database'
-import { cloneDefaultCategories } from '../data/gameData'
+import { cloneDefaultCategories, DEFAULT_FINAL_JEOPARDY } from '../data/gameData'
 import { sanitizePlainText } from '../utils/inputSecurity'
 import useTimedFlag from './useTimedFlag'
 import { sanitizeYouTubeUrl } from '../utils/youtube'
@@ -116,6 +116,28 @@ function normalizeBuzzers(raw) {
       buzzedIn: value.buzzedIn === true,
       buzzTime: typeof value.buzzTime === 'number' ? value.buzzTime : null,
     }
+    return acc
+  }, {})
+}
+
+function normalizeFinalJeopardy(raw) {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_FINAL_JEOPARDY }
+  return {
+    category: sanitizePlainText(typeof raw.category === 'string' ? raw.category : '', 60),
+    clue: sanitizePlainText(typeof raw.clue === 'string' ? raw.clue : '', 240),
+    question: sanitizePlainText(typeof raw.question === 'string' ? raw.question : '', 240),
+    mediaUrl: typeof raw.mediaUrl === 'string' ? sanitizeYouTubeUrl(raw.mediaUrl) : '',
+    imageUrl: typeof raw.imageUrl === 'string' ? sanitizeImageUrl(raw.imageUrl) : '',
+  }
+}
+
+function normalizeFinalJeopardyWagers(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  return Object.entries(raw).reduce((acc, [id, value]) => {
+    const safeId = sanitizePlainText(id, 40)
+    if (!safeId) return acc
+    const amount = Number(value)
+    acc[safeId] = Number.isFinite(amount) ? Math.max(0, amount) : 0
     return acc
   }, {})
 }
@@ -270,6 +292,8 @@ function normalizeRemoteGameState(raw) {
     hostSelection: normalizeSelection(raw.hostSelection),
     homeBoardReveal: raw.homeBoardReveal === true,
     boardReady: raw.boardReady === true,
+    finalJeopardyState: ['wagering', 'clue', 'revealed'].includes(raw.finalJeopardyState) ? raw.finalJeopardyState : null,
+    finalJeopardyWagers: normalizeFinalJeopardyWagers(raw.finalJeopardyWagers),
   }
 }
 
@@ -315,13 +339,24 @@ function normalizeBoardLibrary(raw) {
     boardCategoriesById[normalizedCatalog[0].id] = cloneDefaultCategories()
   }
 
+  const rawFinalJeopardyMap =
+    raw.boardFinalJeopardyById && typeof raw.boardFinalJeopardyById === 'object'
+      ? raw.boardFinalJeopardyById
+      : {}
+
+  const boardFinalJeopardyById = normalizedCatalog.reduce((acc, board) => {
+    acc[board.id] = normalizeFinalJeopardy(rawFinalJeopardyMap[board.id])
+    return acc
+  }, {})
+
   return {
     boardCatalog: normalizedCatalog,
     boardCategoriesById,
+    boardFinalJeopardyById,
   }
 }
 
-function buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById) {
+function buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById, boardFinalJeopardyById = {}) {
   return {
     boardCatalog,
     boardCategoriesById: Object.fromEntries(
@@ -329,6 +364,9 @@ function buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById) {
         boardId,
         normalizeCategoriesForStorage(clearUsedFlags(boardCategories)),
       ]),
+    ),
+    boardFinalJeopardyById: Object.fromEntries(
+      boardCatalog.map(({ id }) => [id, normalizeFinalJeopardy(boardFinalJeopardyById[id])]),
     ),
   }
 }
@@ -426,6 +464,7 @@ function useJeopardyGame() {
   const [boardCategoriesById, setBoardCategoriesById] = useState(() => ({
     'board-1': cloneDefaultCategories(),
   }))
+  const [boardFinalJeopardyById, setBoardFinalJeopardyById] = useState({ 'board-1': { ...DEFAULT_FINAL_JEOPARDY } })
   const [activeBoardId, setActiveBoardId] = useState('board-1')
   const [editorBoardId, setEditorBoardId] = useState(null)
   const [roomUsedMap, setRoomUsedMap] = useState(buildEmptyUsedMap)
@@ -438,6 +477,8 @@ function useJeopardyGame() {
   const [homeBoardReveal, setHomeBoardReveal] = useState(false)
   const [boardReady, setBoardReady] = useState(false)
   const [dailyDoublePositions, setDailyDoublePositions] = useState(generateDailyDoubles)
+  const [finalJeopardyState, setFinalJeopardyState] = useState(null)
+  const [finalJeopardyWagers, setFinalJeopardyWagers] = useState({})
 
   const [connectedPlayerId, setConnectedPlayerId] = useState(null)
   const [buzzers, setBuzzers] = useState({})
@@ -463,6 +504,16 @@ function useJeopardyGame() {
     [boardCategoriesById, editorBoardId],
   )
 
+  const finalJeopardy = useMemo(
+    () => boardFinalJeopardyById[activeBoardId] || { ...DEFAULT_FINAL_JEOPARDY },
+    [boardFinalJeopardyById, activeBoardId],
+  )
+
+  const editorFinalJeopardy = useMemo(
+    () => (editorBoardId ? boardFinalJeopardyById[editorBoardId] : null) || { ...DEFAULT_FINAL_JEOPARDY },
+    [boardFinalJeopardyById, editorBoardId],
+  )
+
   const remoteGameState = useMemo(
     () => ({
       activeBoardId,
@@ -475,6 +526,8 @@ function useJeopardyGame() {
       hostSelection,
       homeBoardReveal,
       boardReady,
+      finalJeopardyState,
+      finalJeopardyWagers,
     }),
     [
       activeBoardId,
@@ -487,6 +540,8 @@ function useJeopardyGame() {
       hostSelection,
       homeBoardReveal,
       boardReady,
+      finalJeopardyState,
+      finalJeopardyWagers,
     ],
   )
 
@@ -508,8 +563,8 @@ function useJeopardyGame() {
   }, [buzzers])
 
   const remoteBoardLibrary = useMemo(
-    () => buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById),
-    [boardCatalog, boardCategoriesById],
+    () => buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById, boardFinalJeopardyById),
+    [boardCatalog, boardCategoriesById, boardFinalJeopardyById],
   )
 
   useCrossTabSync('categories', isRemoteSyncEnabled ? undefined : categories, (newCategories) => {
@@ -670,6 +725,8 @@ function useJeopardyGame() {
           hostSelection: normalized.hostSelection,
           homeBoardReveal: normalized.homeBoardReveal,
           boardReady: normalized.boardReady,
+          finalJeopardyState: normalized.finalJeopardyState,
+          finalJeopardyWagers: normalized.finalJeopardyWagers,
         })
 
         if (normalized.activeBoardId && viewRef.current !== 'editor') {
@@ -686,6 +743,8 @@ function useJeopardyGame() {
         setHostSelection(normalized.hostSelection)
         setHomeBoardReveal(normalized.homeBoardReveal)
         setBoardReady(normalized.boardReady)
+        setFinalJeopardyState(normalized.finalJeopardyState)
+        setFinalJeopardyWagers(normalized.finalJeopardyWagers)
       } catch (err) {
         console.error('[gameState SSE] applyEventData error:', err)
       } finally {
@@ -742,6 +801,7 @@ function useJeopardyGame() {
         lastSyncedBoardLibraryRef.current = normalizedSerialized
         setBoardCatalog(normalized.boardCatalog)
         setBoardCategoriesById(normalized.boardCategoriesById)
+        setBoardFinalJeopardyById(normalized.boardFinalJeopardyById)
         setActiveBoardId((currentBoardId) => {
           if (normalized.boardCategoriesById[currentBoardId]) return currentBoardId
           return normalized.boardCatalog[0]?.id || 'board-1'
@@ -1041,7 +1101,7 @@ function useJeopardyGame() {
     setBoardCategoriesById(nextBoardMap)
 
     if (persistRemote) {
-      writeRemoteBoardLibrary(buildRemoteBoardLibraryPayload(boardCatalog, nextBoardMap))
+      writeRemoteBoardLibrary(buildRemoteBoardLibraryPayload(boardCatalog, nextBoardMap, boardFinalJeopardyById))
     }
 
     editorSavedFlag.trigger()
@@ -1058,6 +1118,8 @@ function useJeopardyGame() {
     setActiveBoardId(boardId)
     setRoomUsedMap(buildEmptyUsedMap())
     setDailyDoublePositions(generateDailyDoubles())
+    setFinalJeopardyState(null)
+    setFinalJeopardyWagers({})
   }
 
   function addBoard(currentDraftCat) {
@@ -1093,8 +1155,10 @@ function useJeopardyGame() {
     }
 
     const nextCatalog = [...boardCatalog, { id: nextId, name: nextName }]
+    const nextFinalJeopardyMap = { ...boardFinalJeopardyById, [nextId]: { ...DEFAULT_FINAL_JEOPARDY } }
     setBoardCatalog(nextCatalog)
     setBoardCategoriesById(nextMap)
+    setBoardFinalJeopardyById(nextFinalJeopardyMap)
     setEditorBoardId(nextId)
     setEditingCat(0)
   }
@@ -1136,6 +1200,44 @@ function useJeopardyGame() {
     if (!hostSelection) return
     setActiveClue(hostSelection)
     setHostClueState(revealAnswer ? 'revealed' : 'hidden')
+  }
+
+  function startFinalJeopardy() {
+    setFinalJeopardyState('wagering')
+    setFinalJeopardyWagers({})
+    setActiveClue(null)
+    setHostClueState('hidden')
+  }
+
+  function revealFinalClue() {
+    setFinalJeopardyState('clue')
+  }
+
+  function revealFinalAnswer() {
+    setFinalJeopardyState('revealed')
+  }
+
+  function endFinalJeopardy() {
+    setFinalJeopardyState(null)
+    setFinalJeopardyWagers({})
+  }
+
+  function submitFinalWager(teamId, amount) {
+    const teamIndex = buzzers[teamId]?.teamIndex ?? parseInt(teamId.replace('team_', ''), 10)
+    const playerName = players[teamIndex] || `Team ${teamIndex + 1}`
+    const maxWager = Math.max(1000, scores[playerName] || 0)
+    const clamped = Math.max(0, Math.min(Number(amount) || 0, maxWager))
+    setFinalJeopardyWagers((prev) => ({ ...prev, [teamId]: clamped }))
+  }
+
+  function saveFinalJeopardy(boardId, data, options = {}) {
+    const { persistRemote = false } = options
+    const normalized = normalizeFinalJeopardy(data)
+    const nextMap = { ...boardFinalJeopardyById, [boardId]: normalized }
+    setBoardFinalJeopardyById(nextMap)
+    if (persistRemote) {
+      writeRemoteBoardLibrary(buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById, nextMap))
+    }
   }
 
   function showDailyDoubleOnPlayer() {
@@ -1224,6 +1326,8 @@ function useJeopardyGame() {
     setScores({})
     setRoomUsedMap(buildEmptyUsedMap())
     setDailyDoublePositions(generateDailyDoubles())
+    setFinalJeopardyState(null)
+    setFinalJeopardyWagers({})
 
     if (!isRemoteSyncEnabled) return
 
@@ -1260,12 +1364,16 @@ function useJeopardyGame() {
       homeBoardReveal,
       boardReady,
       dailyDoublePositions,
+      finalJeopardyState,
+      finalJeopardyWagers,
       connectedPlayerId,
       buzzers,
     },
     derived: {
       activePlayers,
       editorCategories,
+      editorFinalJeopardy,
+      finalJeopardy,
       editorSaved: editorSavedFlag.isActive,
       playersSaved: playersSavedFlag.isActive,
     },
@@ -1287,6 +1395,12 @@ function useJeopardyGame() {
       openHostSelection,
       sendSelectionToPlayer,
       showDailyDoubleOnPlayer,
+      startFinalJeopardy,
+      revealFinalClue,
+      revealFinalAnswer,
+      endFinalJeopardy,
+      submitFinalWager,
+      saveFinalJeopardy,
       resetScores,
       clearRealtimeGameData,
       selectBoard,

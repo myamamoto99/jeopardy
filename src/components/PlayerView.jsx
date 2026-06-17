@@ -11,6 +11,8 @@ function PlayerView({
   activePlayers,
   scores,
   boardReady,
+  finalJeopardy,
+  finalJeopardyState,
   onHome,
   onHost,
 }) {
@@ -38,7 +40,32 @@ function PlayerView({
         </button>
       </div>
 
-      {!boardReady ? (
+      {finalJeopardyState === 'wagering' ? (
+        <div className="clue-view">
+          <div className="small-meta">Final Jeopardy</div>
+          <div className="daily-double-title" style={{ color: '#e8edf8' }}>
+            {finalJeopardy?.category || 'Final Jeopardy'}
+          </div>
+          <div className="subcopy">Place your wagers on your buzzer device</div>
+        </div>
+      ) : finalJeopardyState === 'clue' ? (
+        <div className="clue-view">
+          <div className="small-meta">Final Jeopardy · {finalJeopardy?.category}</div>
+          <div className="clue-answer">{finalJeopardy?.clue}</div>
+          {finalJeopardy?.imageUrl && (
+            <img src={finalJeopardy.imageUrl} alt="Final Jeopardy" className="clue-image" />
+          )}
+        </div>
+      ) : finalJeopardyState === 'revealed' ? (
+        <div className="clue-view">
+          <div className="small-meta">Final Jeopardy · {finalJeopardy?.category}</div>
+          <div className="clue-answer">{finalJeopardy?.clue}</div>
+          {finalJeopardy?.imageUrl && (
+            <img src={finalJeopardy.imageUrl} alt="Final Jeopardy" className="clue-image" />
+          )}
+          <div className="reveal-box">{finalJeopardy?.question}</div>
+        </div>
+      ) : !boardReady ? (
         <div className="player-main">
           <div className="title player-title">JEOPARDY!</div>
           <div className="subcopy">Scan to join the game</div>

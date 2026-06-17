@@ -13,3 +13,11 @@ export const DEFAULT_CATEGORIES = Array.from({ length: CATEGORY_COUNT }, (_, i) 
 export function cloneDefaultCategories() {
   return JSON.parse(JSON.stringify(DEFAULT_CATEGORIES))
 }
+
+export const DEFAULT_FINAL_JEOPARDY = {
+  category: '',
+  clue: '',
+  question: '',
+  mediaUrl: '',
+  imageUrl: '',
+}
