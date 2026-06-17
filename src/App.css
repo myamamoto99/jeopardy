@@ -64,6 +64,8 @@
   font-weight: 600;
   background: transparent;
   color: #e8edf8;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn:hover {
@@ -541,27 +543,28 @@
 }
 
 .buzzer-btn {
-  width: 100%;
-  max-width: 300px;
-  min-height: 120px;
-  font-size: 28px;
+  display: block;
+  width: min(80vw, 300px);
+  min-height: 160px;
+  font-size: clamp(24px, 6vw, 36px);
   font-weight: 700;
   background: #2a7fff;
-  border-color: #2a7fff;
+  border: none;
   color: #fff;
-  border-radius: 12px;
-  transition: all 0.3s ease;
+  border-radius: 16px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
-.buzzer-btn:hover:not(:disabled) {
+.buzzer-btn:active {
   background: #1e5fbf;
-  border-color: #1e5fbf;
-  transform: scale(1.05);
+  transform: scale(0.97);
 }
 
 .buzzer-btn:disabled {
   background: #666;
-  border-color: #666;
   cursor: not-allowed;
 }
 
