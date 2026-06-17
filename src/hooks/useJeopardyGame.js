@@ -29,6 +29,35 @@ const DEFAULT_CATEGORIES = cloneDefaultCategories()
 const CATEGORY_COUNT = DEFAULT_CATEGORIES.length
 const CLUE_COUNT = DEFAULT_CATEGORIES[0]?.clues?.length || 5
 
+function generateDailyDoubles() {
+  const positions = []
+  const used = new Set()
+  while (positions.length < 2) {
+    const ci = Math.floor(Math.random() * CATEGORY_COUNT)
+    // Skip row 0 ($200) — daily doubles land on higher-value clues
+    const vi = 1 + Math.floor(Math.random() * (CLUE_COUNT - 1))
+    const key = `${ci}-${vi}`
+    if (!used.has(key)) {
+      used.add(key)
+      positions.push({ ci, vi })
+    }
+  }
+  return positions
+}
+
+function normalizeDailyDoublePositions(raw) {
+  if (!Array.isArray(raw) || raw.length < 2) return null
+  const valid = raw.slice(0, 2).map((pos) => {
+    if (!pos || typeof pos !== 'object') return null
+    const ci = Number(pos.ci)
+    const vi = Number(pos.vi)
+    if (!Number.isInteger(ci) || !Number.isInteger(vi)) return null
+    if (ci < 0 || ci >= CATEGORY_COUNT || vi < 0 || vi >= CLUE_COUNT) return null
+    return { ci, vi }
+  })
+  return valid.every(Boolean) ? valid : null
+}
+
 
 
 function buildEmptyUsedMap() {
@@ -229,6 +258,7 @@ function normalizeRemoteGameState(raw) {
     activeBoardId:
       sanitizePlainText(typeof raw.activeBoardId === 'string' ? raw.activeBoardId : '', 40) ||
       null,
+    dailyDoublePositions: normalizeDailyDoublePositions(raw.dailyDoublePositions),
     roomUsedMap: normalizeUsedMap(
       raw.roomUsedMap ||
         extractUsedMapFromCategories(buildCategoriesFromStoredValue(raw.categories)),
@@ -236,7 +266,7 @@ function normalizeRemoteGameState(raw) {
     scores: normalizeScores(raw.scores),
     players: normalizePlayers(raw.players),
     activeClue: normalizeSelection(raw.activeClue),
-    hostClueState: raw.hostClueState === 'revealed' ? 'revealed' : 'hidden',
+    hostClueState: ['hidden', 'daily-double', 'revealed'].includes(raw.hostClueState) ? raw.hostClueState : 'hidden',
     hostSelection: normalizeSelection(raw.hostSelection),
     homeBoardReveal: raw.homeBoardReveal === true,
     boardReady: raw.boardReady === true,
@@ -407,6 +437,7 @@ function useJeopardyGame() {
   const [hostSelection, setHostSelection] = useState(null)
   const [homeBoardReveal, setHomeBoardReveal] = useState(false)
   const [boardReady, setBoardReady] = useState(false)
+  const [dailyDoublePositions, setDailyDoublePositions] = useState(generateDailyDoubles)
 
   const [connectedPlayerId, setConnectedPlayerId] = useState(null)
   const [buzzers, setBuzzers] = useState({})
@@ -435,6 +466,7 @@ function useJeopardyGame() {
   const remoteGameState = useMemo(
     () => ({
       activeBoardId,
+      dailyDoublePositions,
       roomUsedMap,
       scores,
       players,
@@ -446,6 +478,7 @@ function useJeopardyGame() {
     }),
     [
       activeBoardId,
+      dailyDoublePositions,
       roomUsedMap,
       scores,
       players,
@@ -628,6 +661,7 @@ function useJeopardyGame() {
         applyingRemoteGameRef.current = true
         lastSyncedGameStateRef.current = JSON.stringify({
           activeBoardId: normalized.activeBoardId,
+          dailyDoublePositions: normalized.dailyDoublePositions,
           roomUsedMap: normalized.roomUsedMap,
           scores: normalized.scores,
           players: normalized.players,
@@ -640,6 +674,9 @@ function useJeopardyGame() {
 
         if (normalized.activeBoardId && viewRef.current !== 'editor') {
           setActiveBoardId(normalized.activeBoardId)
+        }
+        if (normalized.dailyDoublePositions) {
+          setDailyDoublePositions(normalized.dailyDoublePositions)
         }
         setRoomUsedMap(normalized.roomUsedMap)
         setScores(normalized.scores)
@@ -844,6 +881,17 @@ function useJeopardyGame() {
           mergeRoot,
         )
         const normalized = normalizeBuzzers(nextRaw)
+
+        // Protect buzzedIn:true from being overwritten by a stale per-player SSE echo
+        // of the initial connect write. Only a root-path write (host reset) clears it.
+        if (path !== '/') {
+          Object.keys(buzzersSnapshotRef.current || {}).forEach((id) => {
+            if (buzzersSnapshotRef.current[id]?.buzzedIn && normalized[id] && !normalized[id].buzzedIn) {
+              normalized[id] = { ...buzzersSnapshotRef.current[id] }
+            }
+          })
+        }
+
         buzzersSnapshotRef.current = normalized
         setBuzzers(normalized)
       } catch {
@@ -1009,6 +1057,7 @@ function useJeopardyGame() {
     if (!boardId || boardId === activeBoardId) return
     setActiveBoardId(boardId)
     setRoomUsedMap(buildEmptyUsedMap())
+    setDailyDoublePositions(generateDailyDoubles())
   }
 
   function addBoard(currentDraftCat) {
@@ -1087,6 +1136,12 @@ function useJeopardyGame() {
     if (!hostSelection) return
     setActiveClue(hostSelection)
     setHostClueState(revealAnswer ? 'revealed' : 'hidden')
+  }
+
+  function showDailyDoubleOnPlayer() {
+    if (!hostSelection) return
+    setActiveClue(hostSelection)
+    setHostClueState('daily-double')
   }
 
   function resetScores() {
@@ -1168,6 +1223,7 @@ function useJeopardyGame() {
     setConnectedPlayerId(null)
     setScores({})
     setRoomUsedMap(buildEmptyUsedMap())
+    setDailyDoublePositions(generateDailyDoubles())
 
     if (!isRemoteSyncEnabled) return
 
@@ -1203,6 +1259,7 @@ function useJeopardyGame() {
       hostSelection,
       homeBoardReveal,
       boardReady,
+      dailyDoublePositions,
       connectedPlayerId,
       buzzers,
     },
@@ -1229,6 +1286,7 @@ function useJeopardyGame() {
       savePlayers,
       openHostSelection,
       sendSelectionToPlayer,
+      showDailyDoubleOnPlayer,
       resetScores,
       clearRealtimeGameData,
       selectBoard,

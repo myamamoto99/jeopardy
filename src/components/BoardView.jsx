@@ -8,6 +8,7 @@ function BoardView({
   scores,
   activeClue,
   homeBoardReveal,
+  dailyDoublePositions,
   onHome,
   onShowClue,
   onReveal,
@@ -38,8 +39,15 @@ function BoardView({
 
           <ScoreRow players={activePlayers} scores={scores} />
         </>
-      ) : (
+      ) : (() => {
+        const isDailyDouble = (dailyDoublePositions || []).some(
+          (p) => p.ci === activeClue.ci && p.vi === activeClue.vi,
+        )
+        return (
         <div className="clue-view">
+          {isDailyDouble && !homeBoardReveal && (
+            <div className="daily-double-title">DAILY DOUBLE!</div>
+          )}
           <div className="small-meta">
             {categories[activeClue.ci].name} · ${POINT_VALUES[activeClue.vi]}
           </div>
@@ -69,7 +77,8 @@ function BoardView({
             </button>
           </div>
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

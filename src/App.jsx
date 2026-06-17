@@ -28,6 +28,7 @@ function App({ initialView }) {
       hostSelection,
       homeBoardReveal,
       boardReady,
+      dailyDoublePositions,
       connectedPlayerId,
       buzzers,
     },
@@ -49,6 +50,7 @@ function App({ initialView }) {
       savePlayers,
       openHostSelection,
       sendSelectionToPlayer,
+      showDailyDoubleOnPlayer,
       resetScores,
       clearRealtimeGameData,
       selectBoard,
@@ -86,6 +88,7 @@ function App({ initialView }) {
           scores={scores}
           activeClue={activeClue}
           homeBoardReveal={homeBoardReveal}
+          dailyDoublePositions={dailyDoublePositions}
           onHome={() => setView('home')}
           onShowClue={showClue}
           onReveal={() => setHomeBoardReveal(true)}
@@ -108,8 +111,10 @@ function App({ initialView }) {
           players={players}
           buzzers={buzzers}
           boardReady={boardReady}
+          dailyDoublePositions={dailyDoublePositions}
           onHome={() => setView('home')}
           onSelectClue={openHostSelection}
+          onShowDailyDouble={showDailyDoubleOnPlayer}
           onSendToPlayer={() => sendSelectionToPlayer(false)}
           onRevealOnPlayer={() => sendSelectionToPlayer(true)}
           onMarkUsed={() => {

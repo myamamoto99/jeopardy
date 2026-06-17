@@ -378,6 +378,43 @@
   letter-spacing: 1px;
 }
 
+.daily-double-badge {
+  background: #c0392b;
+  color: #fff;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.daily-double-cell {
+  border-color: #c0392b !important;
+  box-shadow: inset 0 0 0 2px #c0392b;
+}
+
+.daily-double-player {
+  border-color: #c0392b;
+  background: #1f0d0d;
+}
+
+.daily-double-title {
+  font-size: clamp(2.5rem, 8vw, 5rem);
+  font-weight: 900;
+  color: #f0c040;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  text-shadow: 0 0 30px rgba(240, 192, 64, 0.6);
+}
+
+.daily-double-wager {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid #c0392b;
+  border-radius: 8px;
+  background: #1a0a0a;
+}
+
 .mini-actions {
   margin-top: 8px;
   display: flex;

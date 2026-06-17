@@ -74,6 +74,11 @@ function PlayerView({
             </div>
           )}
         </>
+      ) : hostClueState === 'daily-double' ? (
+        <div className="clue-view">
+          <div className="small-meta">{categories[activeClue.ci].name}</div>
+          <div className="daily-double-title">DAILY DOUBLE!</div>
+        </div>
       ) : (
         <div className="clue-view">
           <div className="small-meta">

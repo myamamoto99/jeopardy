@@ -16,8 +16,10 @@ function HostView({
   players,
   buzzers,
   boardReady,
+  dailyDoublePositions,
   onHome,
   onSelectClue,
+  onShowDailyDouble,
   onSendToPlayer,
   onRevealOnPlayer,
   onMarkUsed,
@@ -30,10 +32,19 @@ function HostView({
   onRevealBoard,
 }) {
   const [playNonce, setPlayNonce] = useState(0)
+  const [wager, setWager] = useState('1000')
+  const [wagerPlayerIdx, setWagerPlayerIdx] = useState(0)
+  const [ddSoundNonce, setDdSoundNonce] = useState(0)
 
   const selectedClue = hostSelection
     ? categories[hostSelection.ci].clues[hostSelection.vi]
     : null
+
+  const isDailyDouble =
+    hostSelection != null &&
+    (dailyDoublePositions || []).some(
+      (p) => p.ci === hostSelection.ci && p.vi === hostSelection.vi,
+    )
 
   const embedUrl = useMemo(
     () => buildYouTubeEmbedUrl(selectedClue?.mediaUrl || ''),
@@ -42,6 +53,9 @@ function HostView({
 
   useEffect(() => {
     setPlayNonce(0)
+    setWager('1000')
+    setWagerPlayerIdx(0)
+    setDdSoundNonce(0)
   }, [hostSelection?.ci, hostSelection?.vi])
 
   return (
@@ -133,19 +147,25 @@ function HostView({
         categories={categories}
         compact
         onClueClick={onSelectClue}
-        getCellProps={({ clue, ci, vi, pts, compact }) => ({
-          className: `clue-cell ${compact ? 'compact' : ''} ${clue.used ? 'used-host' : ''} ${
-            hostSelection?.ci === ci && hostSelection?.vi === vi ? 'selected-host' : ''
-          }`,
-          disabled: false,
-          label: clue.used ? 'used' : `$${pts}`,
-        })}
+        getCellProps={({ clue, ci, vi, pts, compact }) => {
+          const isDD = (dailyDoublePositions || []).some((p) => p.ci === ci && p.vi === vi)
+          return {
+            className: `clue-cell ${compact ? 'compact' : ''} ${clue.used ? 'used-host' : ''} ${
+              hostSelection?.ci === ci && hostSelection?.vi === vi ? 'selected-host' : ''
+            } ${isDD && !clue.used ? 'daily-double-cell' : ''}`,
+            disabled: false,
+            label: clue.used ? 'used' : `$${pts}`,
+          }
+        }}
       />
 
       {hostSelection && (
         <div className="host-panel">
-          <div className="small-meta">
-            {categories[hostSelection.ci].name} · ${POINT_VALUES[hostSelection.vi]}
+          <div className="small-meta" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span>{categories[hostSelection.ci].name} · ${POINT_VALUES[hostSelection.vi]}</span>
+            {isDailyDouble && (
+              <span className="daily-double-badge">DAILY DOUBLE</span>
+            )}
           </div>
           <p>
             <strong>Clue:</strong> {categories[hostSelection.ci].clues[hostSelection.vi].answer}
@@ -160,6 +180,44 @@ function HostView({
           <p>
             <strong>Image:</strong> {selectedClue.imageUrl ? 'Added' : 'Not set'}
           </p>
+          {isDailyDouble && (
+            <div className="daily-double-wager">
+              <div className="section-label" style={{ marginTop: '10px' }}>Daily Double Wager</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
+                <select
+                  className="board-select"
+                  value={wagerPlayerIdx}
+                  onChange={(e) => {
+                    const idx = Number(e.target.value)
+                    setWagerPlayerIdx(idx)
+                    const maxW = Math.max(1000, scores[activePlayers[idx]] || 0)
+                    setWager((prev) => String(Math.min(Number(prev), maxW)))
+                  }}
+                >
+                  {activePlayers.map((name, idx) => (
+                    <option key={name} value={idx}>{name}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  className="board-select"
+                  style={{ width: '110px' }}
+                  min={0}
+                  max={Math.max(1000, scores[activePlayers[wagerPlayerIdx]] || 0)}
+                  value={wager}
+                  onChange={(e) => setWager(e.target.value)}
+                  onBlur={() => {
+                    const maxW = Math.max(1000, scores[activePlayers[wagerPlayerIdx]] || 0)
+                    const clamped = Math.max(0, Math.min(Number(wager) || 0, maxW))
+                    setWager(String(clamped))
+                  }}
+                />
+                <span className="small-meta">
+                  max ${Math.max(1000, scores[activePlayers[wagerPlayerIdx]] || 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          )}
           {selectedClue.imageUrl && (
             <div className="clip-player">
               <img
@@ -170,6 +228,15 @@ function HostView({
             </div>
           )}
           <div className="action-row">
+            {isDailyDouble && (
+              <button
+                className="btn"
+                style={{ background: '#c0392b', borderColor: '#c0392b' }}
+                onClick={() => { onShowDailyDouble(); setDdSoundNonce((n) => n + 1) }}
+              >
+                Show Daily Double
+              </button>
+            )}
             <button className="btn btn-blue" onClick={onSendToPlayer}>
               Send to Player Screen
             </button>
@@ -198,6 +265,18 @@ function HostView({
             </button>
           </div>
 
+          {ddSoundNonce > 0 && (
+            <iframe
+              key={ddSoundNonce}
+              src="https://www.youtube.com/embed/cv14hwi0QrI?autoplay=1"
+              width="1"
+              height="1"
+              style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+              allow="autoplay"
+              title="Daily Double sound"
+            />
+          )}
+
           {!embedUrl && selectedClue.mediaUrl && (
             <div className="small-meta">
               This link is not a supported YouTube URL. Use a youtu.be or youtube.com
@@ -221,10 +300,15 @@ function HostView({
 
       <h3 className="section-label">Scores</h3>
       <div className="score-row">
-        {activePlayers.map((name) => {
-          const clueValue = hostSelection ? POINT_VALUES[hostSelection.vi] : 0
+        {activePlayers.map((name, idx) => {
+          const pointValue = hostSelection ? POINT_VALUES[hostSelection.vi] : 0
+          const isDDForThisPlayer = isDailyDouble && idx === wagerPlayerIdx
+          const clueValue = isDDForThisPlayer ? (Number(wager) || 0) : pointValue
           return (
-            <div key={`host-${name}`} className="score-pill">
+            <div
+              key={`host-${name}`}
+              className={`score-pill ${isDDForThisPlayer ? 'daily-double-player' : ''}`}
+            >
               <div className="score-name">{name}</div>
               <div className="score-value">${(scores[name] || 0).toLocaleString()}</div>
               <div className="mini-actions">
@@ -232,13 +316,13 @@ function HostView({
                   onClick={() => onUpdateScore(name, clueValue)}
                   disabled={!hostSelection}
                 >
-                  +${clueValue}
+                  +${clueValue.toLocaleString()}
                 </button>
                 <button
                   onClick={() => onUpdateScore(name, -clueValue)}
                   disabled={!hostSelection}
                 >
-                  -${clueValue}
+                  -${clueValue.toLocaleString()}
                 </button>
               </div>
             </div>
