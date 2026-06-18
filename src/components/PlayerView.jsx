@@ -55,6 +55,7 @@ function PlayerView({
           {finalJeopardy?.imageUrl && (
             <img src={finalJeopardy.imageUrl} alt="Final Jeopardy" className="clue-image" />
           )}
+          <div className="subcopy" style={{ marginTop: '16px' }}>Write your answer on your buzzer device</div>
         </div>
       ) : finalJeopardyState === 'revealed' ? (
         <div className="clue-view">

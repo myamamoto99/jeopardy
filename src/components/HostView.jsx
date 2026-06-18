@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import BoardGrid from './BoardGrid'
 import { POINT_VALUES } from '../data/gameData'
 import { buildYouTubeEmbedUrl } from '../utils/youtube'
@@ -20,6 +20,7 @@ function HostView({
   finalJeopardy,
   finalJeopardyState,
   finalJeopardyWagers,
+  finalJeopardyAnswers,
   onHome,
   onSelectClue,
   onShowDailyDouble,
@@ -37,6 +38,8 @@ function HostView({
   onRevealFinalClue,
   onRevealFinalAnswer,
   onEndFinalJeopardy,
+  onLockAnswers,
+  onStartTimer,
 }) {
   const [playNonce, setPlayNonce] = useState(0)
   const [wager, setWager] = useState('1000')
@@ -46,6 +49,7 @@ function HostView({
   const [fjTimerSeconds, setFjTimerSeconds] = useState(null)
   const [fjTimerPending, setFjTimerPending] = useState(false)
   const [fjTimerSoundNonce, setFjTimerSoundNonce] = useState(0)
+  const hasLockedAnswersRef = useRef(false)
 
   const selectedClue = hostSelection
     ? categories[hostSelection.ci].clues[hostSelection.vi]
@@ -78,6 +82,7 @@ function HostView({
     setFjPlayNonce(0)
     setFjTimerSeconds(null)
     setFjTimerPending(false)
+    hasLockedAnswersRef.current = false
   }, [finalJeopardyState])
 
   useEffect(() => {
@@ -85,6 +90,12 @@ function HostView({
     const id = setTimeout(() => setFjTimerSeconds((s) => s - 1), 1000)
     return () => clearTimeout(id)
   }, [fjTimerSeconds])
+
+  useEffect(() => {
+    if (fjTimerSeconds !== 0 || hasLockedAnswersRef.current) return
+    hasLockedAnswersRef.current = true
+    onLockAnswers?.()
+  }, [fjTimerSeconds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="page board-page">
@@ -443,6 +454,7 @@ function HostView({
                 className="btn"
                 style={{ background: '#1a4a1a', borderColor: '#4a9a4a', color: '#e8edf8', minWidth: '120px' }}
                 onClick={() => {
+                  onStartTimer?.()
                   setFjTimerPending(true)
                   setFjTimerSoundNonce((n) => n + 1)
                   // Delay timer start slightly so audio has time to buffer
@@ -488,13 +500,24 @@ function HostView({
               {activePlayers.map((name, idx) => {
                 const teamId = `team_${idx}`
                 const wagerAmt = finalJeopardyWagers?.[teamId] ?? null
+                const answer = finalJeopardyAnswers?.[teamId] ?? null
                 return (
-                  <div key={name} className="score-pill" style={{ minWidth: '140px' }}>
+                  <div key={name} className="score-pill" style={{ minWidth: '160px' }}>
                     <div className="score-name">{name}</div>
                     <div className="score-value">${(scores[name] || 0).toLocaleString()}</div>
                     <div className="small-meta" style={{ marginTop: '4px' }}>
                       Wager: {wagerAmt != null ? `$${wagerAmt.toLocaleString()}` : 'pending…'}
                     </div>
+                    {answer != null && (
+                      <div className="small-meta" style={{ marginTop: '4px', fontStyle: 'italic', wordBreak: 'break-word' }}>
+                        "{answer || '(blank)'}"
+                      </div>
+                    )}
+                    {answer == null && finalJeopardyState === 'clue' && (
+                      <div className="small-meta" style={{ marginTop: '4px', opacity: 0.5 }}>
+                        answering…
+                      </div>
+                    )}
                     {wagerAmt != null && (
                       <div className="mini-actions">
                         <button onClick={() => onUpdateScore(name, wagerAmt)}>

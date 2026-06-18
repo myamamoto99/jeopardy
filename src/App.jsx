@@ -31,6 +31,9 @@ function App({ initialView }) {
       dailyDoublePositions,
       finalJeopardyState,
       finalJeopardyWagers,
+      finalJeopardyAnswers,
+      finalJeopardyAnswersLocked,
+      finalJeopardyTimerStarted,
       connectedPlayerId,
       buzzers,
     },
@@ -59,6 +62,9 @@ function App({ initialView }) {
       revealFinalAnswer,
       endFinalJeopardy,
       submitFinalWager,
+      submitFinalAnswer,
+      lockFinalJeopardyAnswers,
+      startFinalJeopardyTimer,
       resetScores,
       clearRealtimeGameData,
       selectBoard,
@@ -123,6 +129,8 @@ function App({ initialView }) {
           finalJeopardy={finalJeopardy}
           finalJeopardyState={finalJeopardyState}
           finalJeopardyWagers={finalJeopardyWagers}
+          finalJeopardyAnswers={finalJeopardyAnswers}
+          onStartTimer={startFinalJeopardyTimer}
           onHome={() => setView('home')}
           onSelectClue={openHostSelection}
           onShowDailyDouble={showDailyDoubleOnPlayer}
@@ -148,6 +156,7 @@ function App({ initialView }) {
           onRevealFinalClue={revealFinalClue}
           onRevealFinalAnswer={revealFinalAnswer}
           onEndFinalJeopardy={endFinalJeopardy}
+          onLockAnswers={lockFinalJeopardyAnswers}
         />
       )}
 
@@ -218,8 +227,11 @@ function App({ initialView }) {
           finalJeopardy={finalJeopardy}
           finalJeopardyState={finalJeopardyState}
           finalJeopardyWagers={finalJeopardyWagers}
+          finalJeopardyAnswersLocked={finalJeopardyAnswersLocked}
+          finalJeopardyTimerStarted={finalJeopardyTimerStarted}
           onBuzzIn={buzzIn}
           onSubmitFinalWager={submitFinalWager}
+          onSubmitFinalAnswer={submitFinalAnswer}
           onDisconnect={disconnectPlayer}
         />
       )}

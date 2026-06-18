@@ -142,6 +142,16 @@ function normalizeFinalJeopardyWagers(raw) {
   }, {})
 }
 
+function normalizeFinalJeopardyAnswers(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  return Object.entries(raw).reduce((acc, [id, value]) => {
+    const safeId = sanitizePlainText(id, 40)
+    if (!safeId) return acc
+    acc[safeId] = sanitizePlainText(typeof value === 'string' ? value : '', 240)
+    return acc
+  }, {})
+}
+
 function normalizeCategoriesForStorage(categories) {
   return categories.map((cat) => ({
     name: sanitizePlainText(cat.name, 60),
@@ -294,6 +304,9 @@ function normalizeRemoteGameState(raw) {
     boardReady: raw.boardReady === true,
     finalJeopardyState: ['wagering', 'clue', 'revealed'].includes(raw.finalJeopardyState) ? raw.finalJeopardyState : null,
     finalJeopardyWagers: normalizeFinalJeopardyWagers(raw.finalJeopardyWagers),
+    finalJeopardyAnswers: normalizeFinalJeopardyAnswers(raw.finalJeopardyAnswers),
+    finalJeopardyAnswersLocked: raw.finalJeopardyAnswersLocked === true,
+    finalJeopardyTimerStarted: raw.finalJeopardyTimerStarted === true,
   }
 }
 
@@ -453,6 +466,7 @@ function useJeopardyGame() {
   const gameStateSnapshotRef = useRef(null)
   const buzzersSnapshotRef = useRef({})
   const finalJeopardyWagersRef = useRef({})
+  const finalJeopardyAnswersRef = useRef({})
   const applyingRemoteBoardsRef = useRef(false)
   const lastSyncedBoardLibraryRef = useRef('')
   const didHydrateLocalCategoriesRef = useRef(false)
@@ -480,6 +494,9 @@ function useJeopardyGame() {
   const [dailyDoublePositions, setDailyDoublePositions] = useState(generateDailyDoubles)
   const [finalJeopardyState, setFinalJeopardyState] = useState(null)
   const [finalJeopardyWagers, setFinalJeopardyWagers] = useState({})
+  const [finalJeopardyAnswers, setFinalJeopardyAnswers] = useState({})
+  const [finalJeopardyAnswersLocked, setFinalJeopardyAnswersLocked] = useState(false)
+  const [finalJeopardyTimerStarted, setFinalJeopardyTimerStarted] = useState(false)
 
   const [connectedPlayerId, setConnectedPlayerId] = useState(null)
   const [buzzers, setBuzzers] = useState({})
@@ -529,6 +546,9 @@ function useJeopardyGame() {
       boardReady,
       finalJeopardyState,
       finalJeopardyWagers,
+      finalJeopardyAnswers,
+      finalJeopardyAnswersLocked,
+      finalJeopardyTimerStarted,
     }),
     [
       activeBoardId,
@@ -543,6 +563,9 @@ function useJeopardyGame() {
       boardReady,
       finalJeopardyState,
       finalJeopardyWagers,
+      finalJeopardyAnswers,
+      finalJeopardyAnswersLocked,
+      finalJeopardyTimerStarted,
     ],
   )
 
@@ -747,6 +770,10 @@ function useJeopardyGame() {
         setFinalJeopardyState(normalized.finalJeopardyState)
         finalJeopardyWagersRef.current = normalized.finalJeopardyWagers
         setFinalJeopardyWagers(normalized.finalJeopardyWagers)
+        finalJeopardyAnswersRef.current = normalized.finalJeopardyAnswers
+        setFinalJeopardyAnswers(normalized.finalJeopardyAnswers)
+        setFinalJeopardyAnswersLocked(normalized.finalJeopardyAnswersLocked)
+        setFinalJeopardyTimerStarted(normalized.finalJeopardyTimerStarted)
       } catch (err) {
         console.error('[gameState SSE] applyEventData error:', err)
       } finally {
@@ -882,11 +909,12 @@ function useJeopardyGame() {
       return
     }
 
-    // Always use the ref for wagers so a direct buzzer write is never overwritten
+    // Always use refs for wagers/answers so direct buzzer writes are never overwritten
     // by a stale React state snapshot on the host
     const gameStatePayload = {
       ...remoteGameState,
       finalJeopardyWagers: finalJeopardyWagersRef.current,
+      finalJeopardyAnswers: finalJeopardyAnswersRef.current,
     }
     dbSet(dbRef(db, 'gameState'), gameStatePayload)
       .then(() => {
@@ -1212,10 +1240,18 @@ function useJeopardyGame() {
 
   function startFinalJeopardy() {
     finalJeopardyWagersRef.current = {}
+    finalJeopardyAnswersRef.current = {}
     setFinalJeopardyState('wagering')
     setFinalJeopardyWagers({})
+    setFinalJeopardyAnswers({})
+    setFinalJeopardyAnswersLocked(false)
+    setFinalJeopardyTimerStarted(false)
     setActiveClue(null)
     setHostClueState('hidden')
+  }
+
+  function startFinalJeopardyTimer() {
+    setFinalJeopardyTimerStarted(true)
   }
 
   function revealFinalClue() {
@@ -1228,8 +1264,28 @@ function useJeopardyGame() {
 
   function endFinalJeopardy() {
     finalJeopardyWagersRef.current = {}
+    finalJeopardyAnswersRef.current = {}
     setFinalJeopardyState(null)
     setFinalJeopardyWagers({})
+    setFinalJeopardyAnswers({})
+    setFinalJeopardyAnswersLocked(false)
+    setFinalJeopardyTimerStarted(false)
+  }
+
+  function submitFinalAnswer(teamId, answer) {
+    const sanitized = sanitizePlainText(answer, 240)
+    finalJeopardyAnswersRef.current = { ...finalJeopardyAnswersRef.current, [teamId]: sanitized }
+    setFinalJeopardyAnswers((prev) => ({ ...prev, [teamId]: sanitized }))
+    if (!isRemoteSyncEnabled) return
+    const db = getFirebaseDb()
+    if (!db) return
+    dbSet(dbRef(db, `gameState/finalJeopardyAnswers/${teamId}`), sanitized)
+      .then(() => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'ok', lastError: '', lastWriteAt: Date.now() })))
+      .catch((error) => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'error', lastError: error?.message || 'answer write failed' })))
+  }
+
+  function lockFinalJeopardyAnswers() {
+    setFinalJeopardyAnswersLocked(true)
   }
 
   function submitFinalWager(teamId, amount) {
@@ -1383,6 +1439,9 @@ function useJeopardyGame() {
       dailyDoublePositions,
       finalJeopardyState,
       finalJeopardyWagers,
+      finalJeopardyAnswers,
+      finalJeopardyAnswersLocked,
+      finalJeopardyTimerStarted,
       connectedPlayerId,
       buzzers,
     },
@@ -1417,6 +1476,9 @@ function useJeopardyGame() {
       revealFinalAnswer,
       endFinalJeopardy,
       submitFinalWager,
+      submitFinalAnswer,
+      lockFinalJeopardyAnswers,
+      startFinalJeopardyTimer,
       saveFinalJeopardy,
       resetScores,
       clearRealtimeGameData,
