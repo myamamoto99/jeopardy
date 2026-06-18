@@ -469,6 +469,7 @@ function useJeopardyGame() {
   const finalJeopardyAnswersRef = useRef({})
   const applyingRemoteBoardsRef = useRef(false)
   const lastSyncedBoardLibraryRef = useRef('')
+  const boardLibrarySnapshotRef = useRef({})
   const didHydrateLocalCategoriesRef = useRef(false)
   const viewRef = useRef('home')
   const remoteHydratedRef = useRef(false)
@@ -677,6 +678,34 @@ function useJeopardyGame() {
       })
   }
 
+  function writeRemoteBoardCategories(boardId, categories) {
+    if (!isRemoteSyncEnabled) return
+    const db = getFirebaseDb()
+    if (!db) return
+    const normalized = normalizeCategoriesForStorage(clearUsedFlags(categories))
+    dbSet(dbRef(db, `boards/library/boardCategoriesById/${boardId}`), normalized)
+      .then(() => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'ok', lastError: '', lastWriteAt: Date.now() })))
+      .catch((error) => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'error', lastError: error?.message || 'board write failed' })))
+  }
+
+  function writeRemoteBoardFinalJeopardy(boardId, fjData) {
+    if (!isRemoteSyncEnabled) return
+    const db = getFirebaseDb()
+    if (!db) return
+    dbSet(dbRef(db, `boards/library/boardFinalJeopardyById/${boardId}`), normalizeFinalJeopardy(fjData))
+      .then(() => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'ok', lastError: '', lastWriteAt: Date.now() })))
+      .catch((error) => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'error', lastError: error?.message || 'fj write failed' })))
+  }
+
+  function writeRemoteBoardCatalog(catalog) {
+    if (!isRemoteSyncEnabled) return
+    const db = getFirebaseDb()
+    if (!db) return
+    dbSet(dbRef(db, 'boards/library/boardCatalog'), catalog)
+      .then(() => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'ok', lastError: '', lastWriteAt: Date.now() })))
+      .catch((error) => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'error', lastError: error?.message || 'catalog write failed' })))
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return
@@ -816,18 +845,19 @@ function useJeopardyGame() {
     const applyEventData = (eventData) => {
       try {
         const payload = JSON.parse(eventData)
-        if (payload?.path !== '/') {
-          return
-        }
+        if (!payload || typeof payload.path !== 'string') return
 
-        const normalized = normalizeBoardLibrary(payload.data)
+        const nextRaw = payload.path === '/'
+          ? payload.data
+          : applyFirebasePathUpdate(boardLibrarySnapshotRef.current, payload.path, payload.data)
+
+        const normalized = normalizeBoardLibrary(nextRaw)
         const normalizedSerialized = JSON.stringify(normalized)
-        if (normalizedSerialized === lastSyncedBoardLibraryRef.current) {
-          return
-        }
+        if (normalizedSerialized === lastSyncedBoardLibraryRef.current) return
 
         applyingRemoteBoardsRef.current = true
         lastSyncedBoardLibraryRef.current = normalizedSerialized
+        boardLibrarySnapshotRef.current = nextRaw
         setBoardCatalog(normalized.boardCatalog)
         setBoardCategoriesById(normalized.boardCategoriesById)
         setBoardFinalJeopardyById(normalized.boardFinalJeopardyById)
@@ -1136,8 +1166,8 @@ function useJeopardyGame() {
 
     setBoardCategoriesById(nextBoardMap)
 
-    if (persistRemote) {
-      writeRemoteBoardLibrary(buildRemoteBoardLibraryPayload(boardCatalog, nextBoardMap, boardFinalJeopardyById))
+    if (persistRemote && editorBoardId) {
+      writeRemoteBoardCategories(editorBoardId, nextBoard)
     }
 
     editorSavedFlag.trigger()
@@ -1197,6 +1227,9 @@ function useJeopardyGame() {
     setBoardFinalJeopardyById(nextFinalJeopardyMap)
     setEditorBoardId(nextId)
     setEditingCat(0)
+    writeRemoteBoardCatalog(nextCatalog)
+    writeRemoteBoardCategories(nextId, nextCategories)
+    writeRemoteBoardFinalJeopardy(nextId, DEFAULT_FINAL_JEOPARDY)
   }
 
   function renameBoard(boardId, nextName) {
@@ -1205,11 +1238,13 @@ function useJeopardyGame() {
       return
     }
 
-    setBoardCatalog((prev) =>
-      prev.map((board) =>
+    setBoardCatalog((prev) => {
+      const nextCatalog = prev.map((board) =>
         board.id === boardId ? { ...board, name: safeName } : board,
-      ),
-    )
+      )
+      writeRemoteBoardCatalog(nextCatalog)
+      return nextCatalog
+    })
   }
 
   function savePlayers() {
@@ -1308,8 +1343,8 @@ function useJeopardyGame() {
     const normalized = normalizeFinalJeopardy(data)
     const nextMap = { ...boardFinalJeopardyById, [boardId]: normalized }
     setBoardFinalJeopardyById(nextMap)
-    if (persistRemote) {
-      writeRemoteBoardLibrary(buildRemoteBoardLibraryPayload(boardCatalog, boardCategoriesById, nextMap))
+    if (persistRemote && boardId) {
+      writeRemoteBoardFinalJeopardy(boardId, normalized)
     }
   }
 
