@@ -780,6 +780,9 @@ function useJeopardyGame() {
           boardReady: normalized.boardReady,
           finalJeopardyState: normalized.finalJeopardyState,
           finalJeopardyWagers: normalized.finalJeopardyWagers,
+          finalJeopardyAnswers: normalized.finalJeopardyAnswers,
+          finalJeopardyAnswersLocked: normalized.finalJeopardyAnswersLocked,
+          finalJeopardyTimerStarted: normalized.finalJeopardyTimerStarted,
         })
 
         if (normalized.activeBoardId && viewRef.current !== 'editor') {
