@@ -452,6 +452,7 @@ function useJeopardyGame() {
   const lastSyncedGameStateRef = useRef('')
   const gameStateSnapshotRef = useRef(null)
   const buzzersSnapshotRef = useRef({})
+  const finalJeopardyWagersRef = useRef({})
   const applyingRemoteBoardsRef = useRef(false)
   const lastSyncedBoardLibraryRef = useRef('')
   const didHydrateLocalCategoriesRef = useRef(false)
@@ -744,6 +745,7 @@ function useJeopardyGame() {
         setHomeBoardReveal(normalized.homeBoardReveal)
         setBoardReady(normalized.boardReady)
         setFinalJeopardyState(normalized.finalJeopardyState)
+        finalJeopardyWagersRef.current = normalized.finalJeopardyWagers
         setFinalJeopardyWagers(normalized.finalJeopardyWagers)
       } catch (err) {
         console.error('[gameState SSE] applyEventData error:', err)
@@ -880,7 +882,13 @@ function useJeopardyGame() {
       return
     }
 
-    dbSet(dbRef(db, 'gameState'), remoteGameState)
+    // Always use the ref for wagers so a direct buzzer write is never overwritten
+    // by a stale React state snapshot on the host
+    const gameStatePayload = {
+      ...remoteGameState,
+      finalJeopardyWagers: finalJeopardyWagersRef.current,
+    }
+    dbSet(dbRef(db, 'gameState'), gameStatePayload)
       .then(() => {
         console.log('[gameState write] Success!')
         setFirebaseStatus((prev) => ({
@@ -1203,6 +1211,7 @@ function useJeopardyGame() {
   }
 
   function startFinalJeopardy() {
+    finalJeopardyWagersRef.current = {}
     setFinalJeopardyState('wagering')
     setFinalJeopardyWagers({})
     setActiveClue(null)
@@ -1218,6 +1227,7 @@ function useJeopardyGame() {
   }
 
   function endFinalJeopardy() {
+    finalJeopardyWagersRef.current = {}
     setFinalJeopardyState(null)
     setFinalJeopardyWagers({})
   }
@@ -1227,7 +1237,14 @@ function useJeopardyGame() {
     const playerName = players[teamIndex] || `Team ${teamIndex + 1}`
     const maxWager = Math.max(1000, scores[playerName] || 0)
     const clamped = Math.max(0, Math.min(Number(amount) || 0, maxWager))
+    finalJeopardyWagersRef.current = { ...finalJeopardyWagersRef.current, [teamId]: clamped }
     setFinalJeopardyWagers((prev) => ({ ...prev, [teamId]: clamped }))
+    if (!isRemoteSyncEnabled) return
+    const db = getFirebaseDb()
+    if (!db) return
+    dbSet(dbRef(db, `gameState/finalJeopardyWagers/${teamId}`), clamped)
+      .then(() => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'ok', lastError: '', lastWriteAt: Date.now() })))
+      .catch((error) => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'error', lastError: error?.message || 'wager write failed' })))
   }
 
   function saveFinalJeopardy(boardId, data, options = {}) {
