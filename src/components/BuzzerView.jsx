@@ -25,15 +25,22 @@ function BuzzerView({
   const [wagerSubmitted, setWagerSubmitted] = useState(false)
   const [answerInput, setAnswerInput] = useState('')
   const [answerSubmitted, setAnswerSubmitted] = useState(false)
+  const answerInputRef = useRef('')
   const answerSubmittedRef = useRef(false)
 
   useEffect(() => {
     setWagerInput('')
     setWagerSubmitted(false)
     setAnswerInput('')
+    answerInputRef.current = ''
     setAnswerSubmitted(false)
     answerSubmittedRef.current = false
   }, [finalJeopardyState])
+
+  // Keep ref in sync with state so auto-submit always captures the latest text
+  useEffect(() => {
+    answerInputRef.current = answerInput
+  }, [answerInput])
 
   // Auto-submit answer when host locks answers
   useEffect(() => {
@@ -41,7 +48,7 @@ function BuzzerView({
     if (answerSubmittedRef.current) return
     answerSubmittedRef.current = true
     setAnswerSubmitted(true)
-    onSubmitFinalAnswer(connectedPlayerId, answerInput)
+    onSubmitFinalAnswer(connectedPlayerId, answerInputRef.current)
   }, [finalJeopardyAnswersLocked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const playerBuzzer = buzzers[connectedPlayerId]
@@ -113,21 +120,18 @@ function BuzzerView({
           </div>
           {!finalJeopardyTimerStarted ? (
             <div className="small-meta" style={{ opacity: 0.6 }}>Waiting for host to start timer…</div>
-          ) : answerSubmitted ? (
+          ) : (answerSubmitted || finalJeopardyAnswersLocked) ? (
             <div className="fj-wager-submitted">
-              Answer locked in: <strong>{answerInput || '(blank)'}</strong>
+              Answer submitted: <strong>{answerInput || '(no answer)'}</strong>
             </div>
           ) : (
             <div className="fj-wager-form">
-              <div className="small-meta" style={{ marginBottom: '10px' }}>
-                {finalJeopardyAnswersLocked ? 'Time\'s up!' : 'Type your answer'}
-              </div>
+              <div className="small-meta" style={{ marginBottom: '10px' }}>Type your answer</div>
               <textarea
                 className="fj-answer-input"
                 rows={3}
                 value={answerInput}
                 onChange={(e) => setAnswerInput(e.target.value)}
-                disabled={finalJeopardyAnswersLocked}
                 placeholder="What is..."
                 autoFocus
               />
@@ -139,7 +143,6 @@ function BuzzerView({
                   setAnswerSubmitted(true)
                   onSubmitFinalAnswer(connectedPlayerId, answerInput)
                 }}
-                disabled={finalJeopardyAnswersLocked}
               >
                 Submit Answer
               </button>

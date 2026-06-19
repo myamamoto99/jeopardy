@@ -47,6 +47,7 @@ function PlayerView({
             {finalJeopardy?.category || 'Final Jeopardy'}
           </div>
           <div className="subcopy">Place your wagers on your buzzer device</div>
+          <ScoreRow players={activePlayers} scores={scores} />
         </div>
       ) : finalJeopardyState === 'clue' ? (
         <div className="clue-view">
@@ -56,6 +57,7 @@ function PlayerView({
             <img src={finalJeopardy.imageUrl} alt="Final Jeopardy" className="clue-image" />
           )}
           <div className="subcopy" style={{ marginTop: '16px' }}>Write your answer on your buzzer device</div>
+          <ScoreRow players={activePlayers} scores={scores} />
         </div>
       ) : finalJeopardyState === 'revealed' ? (
         <div className="clue-view">

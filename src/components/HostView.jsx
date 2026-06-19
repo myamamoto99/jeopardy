@@ -45,6 +45,7 @@ function HostView({
   const [wager, setWager] = useState('1000')
   const [wagerPlayerIdx, setWagerPlayerIdx] = useState(0)
   const [ddSoundNonce, setDdSoundNonce] = useState(0)
+  const [ddPending, setDdPending] = useState(false)
   const [fjPlayNonce, setFjPlayNonce] = useState(0)
   const [fjTimerSeconds, setFjTimerSeconds] = useState(null)
   const [fjTimerPending, setFjTimerPending] = useState(false)
@@ -76,6 +77,7 @@ function HostView({
     setWager('1000')
     setWagerPlayerIdx(0)
     setDdSoundNonce(0)
+    setDdPending(false)
   }, [hostSelection?.ci, hostSelection?.vi])
 
   useEffect(() => {
@@ -271,7 +273,15 @@ function HostView({
               <button
                 className="btn"
                 style={{ background: '#c0392b', borderColor: '#c0392b' }}
-                onClick={() => { onShowDailyDouble(); setDdSoundNonce((n) => n + 1) }}
+                disabled={ddPending}
+                onClick={() => {
+                  setDdSoundNonce((n) => n + 1)
+                  setDdPending(true)
+                  setTimeout(() => {
+                    onShowDailyDouble()
+                    setDdPending(false)
+                  }, 1500)
+                }}
               >
                 Show Daily Double
               </button>
