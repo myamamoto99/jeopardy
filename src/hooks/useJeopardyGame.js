@@ -473,6 +473,7 @@ function useJeopardyGame() {
   const didHydrateLocalCategoriesRef = useRef(false)
   const viewRef = useRef('home')
   const remoteHydratedRef = useRef(false)
+  const connectedPlayerIdRef = useRef(null)
 
   const [view, setView] = useState('home')
   const [categories, setCategories] = useState(() => cloneDefaultCategories())
@@ -500,6 +501,7 @@ function useJeopardyGame() {
   const [finalJeopardyTimerStarted, setFinalJeopardyTimerStarted] = useState(false)
 
   const [connectedPlayerId, setConnectedPlayerId] = useState(null)
+  useEffect(() => { connectedPlayerIdRef.current = connectedPlayerId }, [connectedPlayerId])
   const [buzzers, setBuzzers] = useState({})
   const [firebaseStatus, setFirebaseStatus] = useState({
     envConfigured: isRemoteSyncEnabled,
@@ -1022,6 +1024,15 @@ function useJeopardyGame() {
         }
 
         buzzersSnapshotRef.current = normalized
+
+        // On buzzer devices, skip re-rendering when a different player's data changes.
+        // This prevents layout shifts that cause iOS Safari to drop touch events mid-tap.
+        if (viewRef.current === 'buzzer' && path !== '/') {
+          const myId = connectedPlayerIdRef.current
+          const pathId = path.replace(/^\//, '')
+          if (myId && pathId && pathId !== myId) return
+        }
+
         setBuzzers(normalized)
       } catch {
         // Ignore malformed stream event payloads.
