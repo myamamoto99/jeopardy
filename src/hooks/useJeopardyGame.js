@@ -1262,8 +1262,15 @@ function useJeopardyGame() {
   }
 
   function savePlayers() {
-    setPlayers((prev) => prev.map((name, i) => name.trim() || `Team ${i + 1}`))
+    const trimmed = players.map((name, i) => name.trim() || `Team ${i + 1}`)
+    setPlayers(trimmed)
     playersSavedFlag.trigger()
+    if (!isRemoteSyncEnabled) return
+    const db = getFirebaseDb()
+    if (!db) return
+    dbSet(dbRef(db, 'gameState/players'), trimmed)
+      .then(() => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'ok', lastError: '', lastWriteAt: Date.now() })))
+      .catch((error) => setFirebaseStatus((prev) => ({ ...prev, lastWrite: 'error', lastError: error?.message || 'players write failed' })))
   }
 
   function closeBoardClue() {
